@@ -6,7 +6,8 @@
 %
 % (1) Relationship between dvals (decision values), accuracy, and raw
 %     classifier output
-% (2) Raw classifier output: class labels, dvals, and probabilities
+% (2) Looking at three types of raw classifier output: 
+%     class labels, dvals, and probabilities
 % (x) Relationship between dvals and AUC
 % (x) Regression: relationship between MAE and MSE
 %
@@ -55,7 +56,7 @@ X = dat.trial;
 % labels, or decision values, or probabilities. 
 % We will use a LDA classifier which, by default, produces decision values.
 cfg = [];
-cfg.metric      = {'accuracy' 'dval' 'none'};
+cfg.metric      = 'none'; % {'accuracy' 'dval' 'none'};
 cfg.cv          = 'holdout';
 cfg.p           = 0.5;
 cfg.repeat      = 1;
@@ -70,16 +71,21 @@ size(X)
 
 % Let's look at perf now:
 % Recall perf is a cell array with three elements (ie length(perf)=3)
-% because we requested 3 metrics. So perf{1} corresponds to accuracy,
-% perf{2} to dval, and perf{3} to 'none' (raw classifier outputs). 
+% because we requested 3 metrics. So perf{1} corresponds to 'accuracy',
+% perf{2} corrresponds to 'dval', and perf{3} to 'none' (raw classifier outputs). 
 % If we print the cell array we can have a closer look at the dimensions
 perf
 
-% Let us focus at perf{1} and perf{2} for now. We see that
-% size(perf{1})=[131,1] whereas size(perf{2})=[131,2]. So for 'accuracy' we
-% get one vector of results, but for 'dval' we get two. 
-% If we visualize the
-% results, 
+% Let us focus at perf{1} and perf{2} for now. We see that size(perf{1}) is
+% is [131,1]
+size(perf{1})
+
+% whereas size(perf{2}) is [131,2]. 
+size(perf{2}) 
+
+% So for 'accuracy' we a vector of accuracy values, one accuracy for each
+% time point. However, for 'dval' we get two such vectors. Let us visualize
+% the result to see why
 mv_plot_result(result)
 
 %%% TODO: fix visualisatoin for NONE data
@@ -98,7 +104,7 @@ legend({'class 1' 'class 2'})
 %%%%%% EXERCISE 1 %%%%%%
 % Looking at the dimensions of perf for the 'none' metric, we get 
 % size(perf{3}) = [1, 1, 131]? Why is it not [131, 1] like the accuracy
-% metric? What do the singleton dimensions mean?
+% metric? What do the first two dimensions encode?
 % Hint: rerun the analysis with 3-fold cross-validation and 2 repetitions
 % and look at the size again.
 %%%%%%%%%%%%%%%%%%%%%%%%
