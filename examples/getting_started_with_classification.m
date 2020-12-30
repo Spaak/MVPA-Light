@@ -37,9 +37,9 @@
 % - example_classify_multidimensional_data: how to perform more complex 
 %   classification analyses using e.g. time-frequency data and searchlight
 %   analysis.
-% - example_preprocessing: how to use the cfg.preprocess field for
+% - understanding_preprocessing: how to use the cfg.preprocess field for
 %   nested preprocessing
-% - example_train_and_test_functions: how to train and test models
+% - understanding_train_and_test_functions: how to train and test models
 %   directly, without using the high-level interface (e.g. mv_classify)
 
 close all
@@ -50,8 +50,7 @@ clear
 % The dataset is taken from this study: 
 % https://iopscience.iop.org/article/10.1088/1741-2560/11/2/026009/meta
 % The data has been published at
-% http://bnci-horizon-2020.eu/database/data-sets (dataset #15). Out of this
-% data, 
+% http://bnci-horizon-2020.eu/database/data-sets (dataset #15). 
 %
 % Here, it will be explained how to load the data and how to use it.
 % MVPA-Light has a custom function, load_example_data, which is exclusively
