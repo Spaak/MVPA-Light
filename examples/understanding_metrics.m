@@ -4,12 +4,10 @@
 % the different classification and regression metrics in MVPA-Light. It 
 % covers the following topics:
 %
-% (1) Relationship between dvals (decision values), accuracy, and raw
+% (1) Classification: Relationship between dvals (decision values), accuracy, and raw
 %     classifier output
-% (2) Looking at three types of raw classifier output: 
+% (2) Classification: Looking at three types of raw classifier output: 
 %     class labels, dvals, and probabilities
-% (x) Relationship between dvals and AUC
-% (x) Regression: relationship between MAE and MSE
 %
 % It is recommended that you work through this tutorial step by step. To
 % this end, copy the line of code that you are currently reading and paste
@@ -47,7 +45,7 @@ clear
 [dat, clabel] = load_example_data('epoched3');
 X = dat.trial;
 
-%% (1) Relationship between dvals (decision values), accuracy, and raw classifier output
+%% (1) Classification: Relationship between dvals (decision values), accuracy, and raw classifier output
 
 % To keep the results simple, we will use just 1 hold out set as
 % cross-validation approach. We will then extract classification accuracy
@@ -56,10 +54,11 @@ X = dat.trial;
 % labels, or decision values, or probabilities. 
 % We will use a LDA classifier which, by default, produces decision values.
 cfg = [];
-cfg.metric      = 'none'; % {'accuracy' 'dval' 'none'};
+cfg.metric      = {'accuracy' 'dval' 'none'};
 cfg.cv          = 'holdout';
 cfg.p           = 0.5;
 cfg.repeat      = 1;
+cfg.output_type = 'dval';  % make sure that the raw classifier output is dvals not class labels
 cfg.classifier  = 'lda';
     
 
@@ -86,20 +85,18 @@ size(perf{2})
 % So for 'accuracy' we a vector of accuracy values, one accuracy for each
 % time point. However, for 'dval' we get two such vectors. Let us visualize
 % the result to see why
+close all
 mv_plot_result(result)
 
-%%% TODO: fix visualisatoin for NONE data
-
-
-dval = perf{2}
-
-clf
-plot(dval(:,1)) % first vector 
-hold all
-plot(dval(:,2)) % second vector
-legend({'class 1' 'class 2'})
-
-
+% Figure 1 shows accuracy: a single line, since it takes both classes into
+% account simultanesouly
+% Figure 2 shows dval: we get two lines since the average dval is
+% calculated for each class separately
+% Figure 3 shows the raw classifier output: Each dot represents a single
+% sample, and the dots are colored according to which class the sample
+% belongs to. If you average the dvals in each class at each x-value, you
+% obtain the the dval metric shown in the Figure 2. In other words, Figure
+% 2 shows the class-wise average of the values in Figure 3.
 
 %%%%%% EXERCISE 1 %%%%%%
 % Looking at the dimensions of perf for the 'none' metric, we get 
@@ -109,280 +106,103 @@ legend({'class 1' 'class 2'})
 % and look at the size again.
 %%%%%%%%%%%%%%%%%%%%%%%%
 
-%% 
 
+%% (2) Classification: Looking at three types of raw classifier output: class labels, dvals, and probabilities
 
-%%%%%% EXERCISE 1 %%%%%%
-% Now it's your turn: 
-% Create another ERP plot, but this time select channel Fz. 
-%%%%%%%%%%%%%%%%%%%%%%%%
-
-% finally, let's plot the ERP for *all* channels. The plot will be more
-% busy, but remember that each line now designates a different channel
-figure
-plot(dat.time, ERP_attended, 'r-')
-hold all, grid on
-plot(dat.time, ERP_unattended, 'b-')
-
-title('ERP at all channels (red=attended, blue=unattended)')
-xlabel('Time [s]'), ylabel('Amplitude [muV]')
-
-% From this ERPs, it looks like the two classes are well-separated in the 
-% 0.6 - 0.8 sec window. Our first analysis will focus just on this time
-% window. To this end, we will average the time dimension in this window
-% and discard the rest of the times. 
-ival = find(dat.time >= 0.6 & dat.time <= 0.8);  % find the time points corresponding to 0.6-0.8 s
-
-% Extract the mean activity in the interval as features
-X = squeeze(mean(dat.trial(:,:,ival),3));
-size(X)
-
-% Note that now we went back to a different representation of the data: X
-% is now 313 (samples) x 30 (channels), and the channels will serve as our
-% features. This is because classification is usually on the single-trial
-% level, we only calculated the ERPs for visualization.
-
-
-%% (2) Cross-validation and explanation of the cfg struct
-% So far we have only loaded plotted the data. In this section, we will get
-% hands on with the toolbox. We will use the output of the previous
-% section, the [samples x channels] matrix X. Let's jump straight into it:
-cfg = [];
-perf = mv_classify(cfg, X, clabel);
-
-% There seems to be a lot going on here, so let's unpack the questions that
-% might come up:
-% 1. What happened? If we read the output on the console, we can figure out
-% the following: mv_classify performed a cross-validation classification
-% analysis using 5-fold cross-validation (k=5), 5 repetitions, using an 
-% LDA classifier. This is simply the default behaviour if we don't specify
-% anything else.
-% 2. What is perf? Perf refers to 'performance metric', a measure of how
-% good of a job the classifier did. By default, it calculates
-% classification accuracy.
-fprintf('Classification accuracy: %0.2f\n', perf)
-% Hence, the classifier could distinguish both classes with an accuracy of
-% 78% (0.78).
-
-% 3. What does cfg do, it was empty after all?
-% cfg controls all aspects of the classification analysis: choosing the
-% classifier, a metric, preprocessing and definint the cross-validation.
-% For instance, let us change the classifier to Logistic Regression
-% (logreg).
+% Classifiers such as LDA can produce different types of outputs: class
+% labels, dvals, and probabilities. These outputs are not the same as
+% metrics: classifier outputs are the raw outputs produced by a classifier,
+% whereas metrics are summaries calculated on basis of the raw outputs. In the
+% previous exercise, we have seen that cfg.output_type can be used to
+% select the type of raw output. 
 
 cfg = [];
-cfg.classifier  = 'logreg';
+cfg.metric      = 'none';
+cfg.output_type = 'clabel';  % 'clabel' is also the default for the 'none' metric
+cfg.cv          = 'none';    % cv = 'none' means the entire training set serves as test set.
+cfg.classifier  = 'lda';
+    
+[perf_clabel, result_clabel] = mv_classify_across_time(cfg, X, clabel);
 
-perf = mv_classify(cfg, X, clabel);
+% now let's set the output type to dval and calculate the result
+cfg.output_type = 'dval';
+[perf_dval, result_dval] = mv_classify_across_time(cfg, X, clabel);
+
+% now let's set the output type to prob
+cfg.output_type = 'prob';
+% to get probabilities, we must also set LDA's .prob hyperparameter to one,
+% because in order to calculate probabilities a multivariate Gaussian
+% distribution needs to be estimated in the training phase
+cfg.hyperparameter = [];
+cfg.hyperparameter.prob = 1;
+[perf_prob, result_prob] = mv_classify_across_time(cfg, X, clabel);
+
+% let's print the first 5 elements from each of the results using the
+% 101-st time point (corresponding to  dat.time(101) = 0.7s post-stimulus))
+% Since we set cv = 'none' there is no random folds, hence the first 5 elements 
+% in each result correspond to the first 5 samples in the data.
+% (perf has two leading singleton dimensions because technically 
+% the data belongs to the 1st repetition and 1st fold)
+perf_clabel{1,1,100}(1:5)
+perf_dval{1,1,100}(1:5)
+perf_prob{1,1,100}(1:5)
+
+% let us also compare the first 5 true class labels
+clabel(1:5)
+
+% We see that
+% - the first 5 samples are from class 2 (see clabel)
+% - the classifier predicts 4 of these samples correctly (see perf_clabel)
+% - we get positive dvals for samples predicted as class 1 and negative dvals for samples predicted as class 2 (see perf_dval)
+% - we get probabilities >0.5 for samples predicted as class 1 and probabilities <=0.5 
+%   for samples predicted as class 2 (see perf_prob). Hence the
+%   interpretation of the probability is "probability that the sample
+%   belongs to class 1". The threshold of 0.5 is defined as the cutoff.
+% This also shows that we can directly calculate the class labels from
+% either dvals or probabilities.
 
 %%%%%% EXERCISE 2 %%%%%%
-% Look at the available classifiers at 
-% https://github.com/treder/MVPA-Light/blob/master/README.md#classifiers
-% Do the classification again, this time using a Naive Bayes classifier.
+% Use the mv_plot_result(...) function to plot the three result structs. Can you
+% interpret the plots? One of the three plots is not very useful, which
+% one?
 %%%%%%%%%%%%%%%%%%%%%%%%
 
-% Now we know how to set a classifier, let's see how we can change the
-% metric that we want to be calculated.  Let's go for area under the ROC
-% curve (auc) instead of accuracy. We will see that the value is higher
-% than that obtained for classification accuracy.
-cfg = [];
-cfg.metric      = 'auc';
-perf = mv_classify(cfg, X, clabel);
-fprintf('AUC: %0.2f\n', perf)
+%%
 
-% We can also calculate both AUC and accuracy at the same time using a cell
-% array. Now perf will be a cell array, the first value is the AUC value,
-% the second value is classification accuracy.
-cfg = [];
-cfg.metric      = {'auc', 'accuracy'};
-perf = mv_classify(cfg, X, clabel);
-
-perf
-
-%%%%%% EXERCISE 3 %%%%%%
-% Look at the available classification metrics at 
-% https://github.com/treder/MVPA-Light/blob/master/README.md#metrics
-% Do the classification again, this time calculating precision and recall.
-%%%%%%%%%%%%%%%%%%%%%%%%
-
-% We know now how to define the classifier and the performance metric. We
-% still need to understand how to change the cross-validation scheme. Let us
-% perform k-fold cross-validation with 10 folds (i.e. 10-fold
-% cross-validation) and 2 repetitions. Note how the output on the console 
-% changes.
-cfg = [];
-cfg.k           = 10;
-cfg.repeat      = 2;
-perf = mv_classify(cfg, X, clabel);
-
-
-%%%%%% EXERCISE 4 %%%%%%
-% Look at the description of cross-validation at 
-% https://github.com/treder/MVPA-Light/blob/master/README.md#cv
-% Do the classification again, but instead of k-fold cross-validation use
-% leave-one-out (leaveout) cross-validation.
-%%%%%%%%%%%%%%%%%%%%%%%%
-
-%%%%%% EXERCISE 5 %%%%%%
-% This is a conceptual question: why is it useful to have multiple 
-% repetitions of the cross-validation analysis? Why don't we just run it
-% once?
-%%%%%%%%%%%%%%%%%%%%%%%%
-
-%% (3) Classification of data with a time dimension
-% If the data X is three-dimensional e.g. [samples x channels x time points], 
-% we can perform a classification for every time point separately. This is 
-% useful e.g. for event-related experimental designs.
-% Let's go back to the original data then, which had 313 samples x 30 EEG
-% channels x 131 time points.
-X = dat.trial;
+% Before looking at the results let us recall the dimensions of the data
+% which are [313, 30, 131], that is 313 samples, 30 channels, 131 time points 
 size(X)
 
-% We can again use mv_classify. X now has 3 dimensions, but mv_classify
-% simply loops over any additional dimension. We now obtain a
-% classification accuracy for each time point. When we plot it, we can see
-% that classification performance is high between 0.2 - 0.8 sec.
-cfg = [];
-perf = mv_classify(cfg, X, clabel);
+% Let's look at perf now:
+% Recall perf is a cell array with three elements (ie length(perf)=3)
+% because we requested 3 metrics. So perf{1} corresponds to 'accuracy',
+% perf{2} corrresponds to 'dval', and perf{3} to 'none' (raw classifier outputs). 
+% If we print the cell array we can have a closer look at the dimensions
+perf
 
+% Let us focus at perf{1} and perf{2} for now. We see that size(perf{1}) is
+% is [131,1]
+size(perf{1})
+
+% whereas size(perf{2}) is [131,2]. 
+size(perf{2}) 
+
+% So for 'accuracy' we a vector of accuracy values, one accuracy for each
+% time point. However, for 'dval' we get two such vectors. Let us visualize
+% the result to see why
 close all
-plot(dat.time, perf, 'o-')
-grid on
-xlabel('Time'), ylabel('Accuracy')
-title('Classification across time')
-
-% For [samples x features x time] data, MVPA-Light has also a specialized
-% function called mv_classify_across_time. It does the same thing as
-% mv_classify in this case, but it can be faster so you are recommended to
-% use it in these cases. The only obvious difference is that in the output
-% the dimensions are now labeled as 'samples', 'features', and 'time
-% points'. Both mv_classify and mv_classify_across_time use the same type
-% of parameters for the cfg struct
-cfg = [];
-perf = mv_classify_across_time(cfg, X, clabel);
-
-%%%%%% EXERCISE 6 %%%%%%
-% Let's put together everything we learned so far: Use
-% mv_classify_across_time with a Logistic Regression classifier and
-% 20-fold cross-validation with 1 repetition. Use Cohen's kappa as a 
-% classification metric. Plot the result.
-%%%%%%%%%%%%%%%%%%%%%%%%
-
-%% (4) Time generalization (time x time classification): 
-% Sometimes we want to train the classifier at a given time point t1 and 
-% test it at *all* time points t2 in the trial. If we repeat this for every
-% combination of training and test time points, we will obtain a [time x time] 
-% matrix of results. 
-
-% We already calculated cross-validated performance above. Here, we do the
-% analysis once again, this time without cross-validation.
-
-cfg = [];
-cfg.metric      = 'auc';
-auc = mv_classify_timextime(cfg, dat.trial, clabel);
-
-% plot the image
-close all
-imagesc(dat.time, dat.time, auc)
-set(gca, 'YDir', 'normal')
-colorbar
-grid on
-ylabel('Training time'), xlabel('Test time')
-
-%%%%%% EXERCISE 7 %%%%%%
-% Repeat the time x time classification without cross-validation. What 
-% do you notice?
-%%%%%%%%%%%%%%%%%%%%%%%%
-
-% Generalization with two datasets: So far we trained and tested on the
-% same dataset. However, nothing stops us from training on one dataset and
-% testing on the other dataset. This can be useful e.g. in experiments with
-% different experimental conditions (eg memory encoding and memory
-% retrieval) where one may want to investigate whether representations in
-% the first phase re-occur in the second phase. 
-%
-% We do not have such example data, so instead we will do cross-participant
-% classification: train on the data of participant 1, test on the data of
-% participant 2
-[dat1, clabel1] = load_example_data('epoched1');  % participant 1
-[dat2, clabel2] = load_example_data('epoched2');  % participant 2
-
-% To perform this, we can pass the second dataset and the second class
-% label vector as extra parameters to the function call. Note that no
-% cross-validation is performed since the datasets are independent. It is
-% useful to use AUC instead of accuracy here, because AUC is not affected
-% by different in offset and scaling that the two datasets might have.
-cfg =  [];
-cfg.classifier = 'lda';
-cfg.metric     = 'auc';
-
-acc = mv_classify_timextime(cfg, dat1.trial, clabel1, dat2.trial, clabel2);
-
-close all
-imagesc(dat2.time, dat1.time, acc)
-set(gca, 'YDir', 'normal')
-colorbar
-grid on
-ylabel('Participant 1 time'), xlabel('Participant 2 time')
-
-%%%%%% EXERCISE 8 %%%%%%
-% Repeat the cross-classification but train on participant 1 and test on
-% participant 2. Do you expect the same result?
-%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-%% (5) Plotting results
-% So far, we have plotted the results by hand using Matlab's plot
-% function. For a quick and dirty visualization, MVPA-Light has a function
-% called mv_plot_result. It plots the results and nicely lays out the axes
-% for us. To be able to use it, we need the result struct, which is simply
-% the second output argument of any classification function.
-
-% Let's test the visualization for 2D data first 
-X = mean(dat.trial(:,:,100), 3);
-
-cfg = [];
-cfg.metric = 'auc';
-[perf, result] = mv_classify(cfg, X, clabel);
-
-% now call it passing result as an input argument. We will obtain a barplot
-% representing the AUC. The height of the bar is equal to the value of
-% perf. The errorbar is the standard deviation across folds and
-% repetitions, an heuristic marker of how variable the performance measure
-% is for different test sets.
 mv_plot_result(result)
 
-% Next, let us perform classification across time. The result will be a
-% time series of AUCs. The linea represents the mean (equal to the values 
-% in perf), the shaded area is again the standard deviation across
-% folds/repeats.
-cfg = [];
-cfg.metric = 'auc';
-[perf, result] = mv_classify_across_time(cfg, dat.trial, clabel);
+% Figure 1 shows accuracy: a single line, since it takes both classes into
+% account simultanesouly
+% Figure 2 shows dval: we get two lines since the average dval is
+% calculated for each class separately
+% Figure 3 shows the raw classifier output: Each dot represents a single
+% sample, and the dots are colored according to which class the sample
+% belongs to. If you average the dvals in each class at each x-value, you
+% obtain the the dval metric shown in the Figure 2. In other words, Figure
+% 2 shows the class-wise average of the values in Figure 3.
 
-mv_plot_result(result)
-
-% the x-axis depicts the sample number, not the real time index. To get the
-% x-axis right, we can provide the correct values as an extra argument to
-% the function call
-mv_plot_result(result, dat.time)
-
-% Lastly, let us try time generalization (time x time classification). For
-% the resultant plot, both the x-axis and the y-axis need to be specified.
-% Therefore, we pass the parameter dat.time twice.
-cfg = [];
-cfg.metric = 'precision';
-[perf, result] = mv_classify_timextime(cfg, dat.trial, clabel);
-
-g = mv_plot_result(result, dat.time, dat.time);
-
-% the output argument g contains some handles to the graphical elements
-% which may be convenient when customizing the layout of the plots.
-
-%%%%%% EXERCISE 9 %%%%%%
-% What happens to the plot when you request multiple metrics at once, for
-% instance, precision, recall and AUC?
-%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% SOLUTIONS TO THE EXERCISES
 %% SOLUTION TO EXERCISE 1
@@ -395,9 +215,38 @@ cfg.repeat      = 2;
 [perf, result] = mv_classify_across_time(cfg, X, clabel);
 
 perf
-
 % Now we see that size(perf{3}) = [2, 3, 131]. So the first dimension
 % represents the number of repetitions (2), the second the number of test
 % folds (3), and the third is the number of time points. For metric='none'
 % we get separate results for each repetition and fold because the results
 % are not averaged across folds/repetitions.
+
+%% SOLUTION TO EXERCISE 2
+% Let's start with plotting the result based on the clabel outputs.
+mv_plot_result(result_clabel)
+% We see only tow horizontal lines of dots at y=1 and y=2: this is 
+% because we are plotting the class labels which have the values 1 and 2.
+% Furthermore, class 1 dots are plotted first, followed by class 2 dots.
+% Class 2 dots are superimposed on class 1 which is why we can only see one
+% class. This visualization is not very useful, it would look very much the
+% same even if the classifier was classifying at random.
+
+% Let us look at the dvals now. We can add dat.time as a second argument,
+% this makes sure that the x-axis correspond to the time within the epoch:
+mv_plot_result(result_dval, dat.time)
+% We can see both class 1 and 2. As expected, class 1 tends to be positive
+% and class 2 tends to be negative. The y-axis now represents dvals. The
+% scaling of the y-axis depends on the type of classifier and potentially
+% the scaling of the data, but the relative relationships between the
+% classes are more important here.
+
+% Let us now compare these dvals to the probability values:
+mv_plot_result(result_prob, dat.time)
+% Now the y-axis is confined to [0, 1]. It represents the probability of a 
+% sample belonging to class 1. Naturally, class 1 samples tend to have a 
+% higher probability than class 2 samples. Moreover, comparing probabilities 
+% to dvals we can see a good correspondence: for each time point wherein 
+% the dvals for class 1 vs 2 dvals are further apart, their corresponding 
+% probabilities are further apart, too. It is especially at these time
+% points that discriminability is high.
+
