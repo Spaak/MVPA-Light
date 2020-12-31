@@ -1,13 +1,17 @@
 % UNDERSTANDING METRICS
 %
 % The purpose of this tutorial is to gain a better understanding of
-% the different classification and regression metrics in MVPA-Light. It 
-% covers the following topics:
+% the different classification and regression metrics in MVPA-Light as well
+% as the different types of outputs that classifiers produce.
+% It covers the following topics:
 %
 % (1) Classification: Relationship between dvals (decision values), accuracy, and raw
 %     classifier output
 % (2) Classification: Looking at three types of raw classifier output: 
 %     class labels, dvals, and probabilities
+% (3) Regression: Relationship between the raw model output (predictions)
+%     and the metrics MAE and MSE
+% (4) Classification: Compare classification metrics
 %
 % It is recommended that you work through this tutorial step by step. To
 % this end, copy the line of code that you are currently reading and paste
@@ -47,6 +51,8 @@ X = dat.trial;
 
 %% (1) Classification: Relationship between dvals (decision values), accuracy, and raw classifier output
 
+% In this section we investigate the relationship between dvals,
+% accuracy and the raw classifier output. 
 % To keep the results simple, we will use just 1 hold out set as
 % cross-validation approach. We will then extract classification accuracy
 % ('accuracy'), decision values ('dval'), and raw classifier output ('none').
@@ -60,7 +66,6 @@ cfg.p           = 0.5;
 cfg.repeat      = 1;
 cfg.output_type = 'dval';  % make sure that the raw classifier output is dvals not class labels
 cfg.classifier  = 'lda';
-    
 
 [perf, result] = mv_classify_across_time(cfg, X, clabel);
 
@@ -112,7 +117,7 @@ mv_plot_result(result)
 % Classifiers such as LDA can produce different types of outputs: class
 % labels, dvals, and probabilities. These outputs are not the same as
 % metrics: classifier outputs are the raw outputs produced by a classifier,
-% whereas metrics are summaries calculated on basis of the raw outputs. In the
+% whereas metrics are summaries calculated on basis of these raw outputs. In the
 % previous exercise, we have seen that cfg.output_type can be used to
 % select the type of raw output. 
 
@@ -167,42 +172,105 @@ clabel(1:5)
 % one?
 %%%%%%%%%%%%%%%%%%%%%%%%
 
-%%
+%% (3) Regression: Relationship between the raw model output (predictions) and the metrics MAE and MSE
 
-% Before looking at the results let us recall the dimensions of the data
-% which are [313, 30, 131], that is 313 samples, 30 channels, 131 time points 
-size(X)
+% In this section we will look into how the output of a regression model
+% relates to the metrics MAE and MSE. We will use the same EEG data we used
+% for classification, but to simplify the analysis we will focus on a
+% single time point. Let us perform regression on all time points first and
+% then select the time point that gives us the best result. 
+% To this end, train a Kernel Ridge regression model and calculate MAE
 
-% Let's look at perf now:
-% Recall perf is a cell array with three elements (ie length(perf)=3)
-% because we requested 3 metrics. So perf{1} corresponds to 'accuracy',
-% perf{2} corrresponds to 'dval', and perf{3} to 'none' (raw classifier outputs). 
-% If we print the cell array we can have a closer look at the dimensions
+cfg                 = [];
+cfg.model           = 'ridge';
+cfg.hyperparameter  = [];
+cfg.hyperparameter.lambda = 0.1;
+cfg.metric          = 'mae';
+
+% Since we want to predict the trial number both train and test sets should
+% ideally contain early, middle, and late trials. An easy way to achieve
+% this is to predefine two folds: the first fold contains trials with
+% uneven trials numbers (1, 3, 5, ...) and the second folds contains the
+% even trials.
+cfg.cv              = 'predefined';    
+fold = ones(numel(y), 1); 
+fold(2:2:end) = 2; % even trials are designated as fold 2
+cfg.fold            = fold;
+
+[perf, result] = mv_regress(cfg, dat.trial, y);
+mv_plot_result(result, dat.time)
+hold on
+[~, min_ix] = min(perf);  % index of time point with lowest MAE
+plot(dat.time(min_ix), perf(min_ix), 'r.', 'MarkerSize', 36) % mark point with the lowest MAE in red
+
+% From the plot we see that at time index min_ix the error is the lowest. Let 
+% us select this time point before we proceed
+X = squeeze(dat.trial(:, :, min_ix));
+
+% For this time point, train another model and calculate MAE, MSE and the raw predictions
+cfg.metric         = {'mae' 'mse' 'none'};
+[perf, result] = mv_regress(cfg, X, y);
 perf
 
-% Let us focus at perf{1} and perf{2} for now. We see that size(perf{1}) is
-% is [131,1]
-size(perf{1})
+% perf{1} and perf{2} represent MAE and MSE. perf{3} contains the raw
+% predictions. It is a nested cell array with the results for the two folds
+% The first fold perf{3}{1} represents the uneven trial numbers and
+% perf{3}{2} represents even trial numbers.  Let us unpack these two into a
+% variable pred
+pred = zeros(numel(y), 1);
+pred(1:2:end) = perf{3}{1};
+pred(2:2:end) = perf{3}{2};
+% Now pred contains the predictions in order, i.e. pred(i) is the
+% prediction for the i-th trials
 
-% whereas size(perf{2}) is [131,2]. 
-size(perf{2}) 
 
-% So for 'accuracy' we a vector of accuracy values, one accuracy for each
-% time point. However, for 'dval' we get two such vectors. Let us visualize
-% the result to see why
 close all
-mv_plot_result(result)
+plot(1:numel(y), pred)
+grid on
+xlim([0, 313]), ylim([0, 313])
+xlabel('Trial number')
+ylabel('Prediction trial number')
+% The x-axis corresponds to the trial number, the y-axis to the predicted
+% trial number. Although prediction performance appears low, there is a slight 
+% positive trend as x increases suggesting that the model is partly able to
+% predict the trial number from the EEG. 
 
-% Figure 1 shows accuracy: a single line, since it takes both classes into
-% account simultanesouly
-% Figure 2 shows dval: we get two lines since the average dval is
-% calculated for each class separately
-% Figure 3 shows the raw classifier output: Each dot represents a single
-% sample, and the dots are colored according to which class the sample
-% belongs to. If you average the dvals in each class at each x-value, you
-% obtain the the dval metric shown in the Figure 2. In other words, Figure
-% 2 shows the class-wise average of the values in Figure 3.
+%%%%%% EXERCISE 3 %%%%%%
+% How can the predictions in pred be used to calculate perf{1} (representing MAE) 
+% and perf{2} (representing MSE)?
+% Hint: Consider the two folds separately, then use a weighted average.
+%%%%%%%%%%%%%%%%%%%%%%%%
 
+
+%% (4) Compare classification metrics
+
+% In this section we calculate a whole range of classification metrics and
+% display them in a single plot. The plot will indicate that the metrics
+% tend to be correlated with each other.
+
+% Perform classification across time for the different metrics. 
+cfg = [];
+cfg.metric      = {'accuracy' 'f1' 'kappa' 'precision' 'recall' 'auc' 'tval'};
+perf = mv_classify_across_time(cfg, dat.trial, clabel);
+
+% transform cell array to 2D array
+perf = cat(2, perf{:});
+perf(:, end) = perf(:, end)/6; % tval has a much different scaling from the other metrics, to fit it into the same plot we scale it down
+
+% plot the means of all metrics
+close all
+plot(dat.time, perf)
+grid on
+legend(cfg.metric)
+
+% While all the metrics have different interpretations and they can
+% diverge, we often find that they are highly correlated. In fact, looking
+% at the correlation matrix we see that all metrics have a correlation >0.9
+fprintf('Correlation matrix =\n')
+disp(corr(perf))
+% The metrics are expected to diverge more when e.g. the data is strongly
+% unbalanced or the classifier is clearly biased towards one of the
+% classes.
 
 %% SOLUTIONS TO THE EXERCISES
 %% SOLUTION TO EXERCISE 1
@@ -250,3 +318,34 @@ mv_plot_result(result_prob, dat.time)
 % probabilities are further apart, too. It is especially at these time
 % points that discriminability is high.
 
+%% SOLUTION TO EXERCISE 3
+% MAE and MSE are calculated for each of the folds separately, then
+% averaged across the folds. Let's do this by hand by first calculating the
+% residuals:
+residuals1 = y(1:2:end) - perf{3}{1};  % fold 1 with uneven trials
+residuals2 = y(2:2:end) - perf{3}{2};  % fold 2 with even trials
+
+% To calculate MAE, we need to average the absolute value of the residuals
+% in each of the two folds first
+mae1 = mean(abs(residuals1));   % MAE in fold 1
+mae2 = mean(abs(residuals2));   % MAE in fold 2
+% Since the folds can have different numbers of trials, weighted averages are
+% used in MVPA Light wherein each fold is weighted by the number of samples
+% it contains
+N1 = numel(residuals1);
+N2 = numel(residuals2);
+mae = (mae1 * N1 + mae2 * N2) / (N1+N2); % weighted average 
+
+% Comparing mae and perf{1} we see that they are indeed identical
+mae
+perf{1}
+
+% For MSE, the procedure is essentially the same, we only square the
+% residuals before averaging:
+mse1 = mean(residuals1 .^ 2);   % MSE in fold 1
+mse2 = mean(residuals2 .^ 2);   % MSE in fold 2
+mse = (mse1 * N1 + mse2 * N2) / (N1+N2); % weighted average 
+
+% Comparing MSE to perf{2} again we see they are identical
+mse
+perf{2}

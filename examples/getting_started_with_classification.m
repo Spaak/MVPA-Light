@@ -29,7 +29,7 @@
 %
 % Documentation:
 % The Github Readme file is the most up-to-date documentation of the
-% toolbox. You will find an explanation of the function, classifiers,
+% toolbox. You will find an explanation of the functions, models,
 % metrics and parameters there: github.com/treder/MVPA-Light/blob/master/README.md
 %
 % Next steps: Once you finished this tutorial, you can continue with one
@@ -58,6 +58,7 @@ clear
 % load one of the datasets:
 
 % Load data (which is located in the MVPA-Light/examples folder)
+% (copy the following line and paste it into the Matlab console)
 [dat, clabel] = load_example_data('epoched3');
 
 % We loaded a dataset called 'epoched3' and it returned two variables, dat
@@ -67,6 +68,7 @@ dat
 % dat is actually a FieldTrip structure, but we are only interested in the
 % data contained in the dat.trial field for now. Let us assign this data to 
 % the variable X and then look at the size of X:
+% (copy the following two lines and paste them into the Matlab console)
 X = dat.trial;
 size(X)
 
@@ -162,8 +164,9 @@ size(X)
 
 %% (2) Cross-validation and explanation of the cfg struct
 % So far we have only loaded plotted the data. In this section, we will get
-% hands on with the toolbox. We will use the output of the previous
-% section, the [samples x channels] matrix X. Let's jump straight into it:
+% hands on with the toolbox. We will use the output from the end of the previous
+% section, the 2D [samples x channels] matrix X representing the average EEG 
+% activity in the 0.6-0.8s interval. Let's jump straight into it:
 cfg = [];
 perf = mv_classify(cfg, X, clabel);
 
@@ -174,6 +177,7 @@ perf = mv_classify(cfg, X, clabel);
 % analysis using 5-fold cross-validation (k=5), 5 repetitions, using an 
 % LDA classifier. This is simply the default behaviour if we don't specify
 % anything else.
+
 % 2. What is perf? Perf refers to 'performance metric', a measure of how
 % good of a job the classifier did. By default, it calculates
 % classification accuracy.
@@ -183,25 +187,25 @@ fprintf('Classification accuracy: %0.2f\n', perf)
 
 % 3. What does cfg do, it was empty after all?
 % cfg controls all aspects of the classification analysis: choosing the
-% classifier, a metric, preprocessing and definint the cross-validation.
+% classifier, a metric, preprocessing and defining the cross-validation. If
+% it is unspecified, it is simply filled with default values. 
 % For instance, let us change the classifier to Logistic Regression
 % (logreg).
 
 cfg = [];
 cfg.classifier  = 'logreg';
-
 perf = mv_classify(cfg, X, clabel);
+fprintf('Classification accuracy using Logistic Regression: %0.2f\n', perf)
 
 %%%%%% EXERCISE 2 %%%%%%
 % Look at the available classifiers at 
 % https://github.com/treder/MVPA-Light/blob/master/README.md#classifiers
-% Do the classification again, this time using a Naive Bayes classifier.
+% Run the classification again, this time using a Naive Bayes classifier.
 %%%%%%%%%%%%%%%%%%%%%%%%
 
 % Now we know how to set a classifier, let's see how we can change the
 % metric that we want to be calculated.  Let's go for area under the ROC
-% curve (auc) instead of accuracy. We will see that the value is higher
-% than that obtained for classification accuracy.
+% curve (auc) instead of accuracy. 
 cfg = [];
 cfg.metric      = 'auc';
 perf = mv_classify(cfg, X, clabel);
@@ -209,7 +213,8 @@ fprintf('AUC: %0.2f\n', perf)
 
 % We can also calculate both AUC and accuracy at the same time using a cell
 % array. Now perf will be a cell array, the first value is the AUC value,
-% the second value is classification accuracy.
+% the second value is classification accuracy. Since we do not specify a
+% classifier, the default classifier (LDA) is used again.
 cfg = [];
 cfg.metric      = {'auc', 'accuracy'};
 perf = mv_classify(cfg, X, clabel);
@@ -257,16 +262,18 @@ size(X)
 
 % We can again use mv_classify. X now has 3 dimensions, but mv_classify
 % simply loops over any additional dimension. We now obtain a
-% classification accuracy for each time point. When we plot it, we can see
-% that classification performance is high between 0.2 - 0.8 sec.
+% classification accuracy for each time point. 
 cfg = [];
 perf = mv_classify(cfg, X, clabel);
 
+% When we plot it, we can see that classification performance is high 
+% between 0.2 - 0.8 sec.
 close all
 plot(dat.time, perf, 'o-')
 grid on
 xlabel('Time'), ylabel('Accuracy')
 title('Classification across time')
+
 
 % For [samples x features x time] data, MVPA-Light has also a specialized
 % function called mv_classify_across_time. It does the same thing as
@@ -289,22 +296,31 @@ perf = mv_classify_across_time(cfg, X, clabel);
 % Sometimes we want to train the classifier at a given time point t1 and 
 % test it at *all* time points t2 in the trial. If we repeat this for every
 % combination of training and test time points, we will obtain a [time x time] 
-% matrix of results. 
-
-% We already calculated cross-validated performance above. Here, we do the
-% analysis once again, this time without cross-validation.
+% matrix of results. This is also known as the temporal generalization
+% method (King and Dehaene, 2014;
+% https://pubmed.ncbi.nlm.nih.gov/24593982/).
 
 cfg = [];
 cfg.metric      = 'auc';
 auc = mv_classify_timextime(cfg, dat.trial, clabel);
 
-% plot the image
+% plot the resultant image
 close all
 imagesc(dat.time, dat.time, auc)
 set(gca, 'YDir', 'normal')
 colorbar
 grid on
 ylabel('Training time'), xlabel('Test time')
+% This looks more complicated. Now the classification accuracy is coded as
+% a color, and the colorbar indicates which classification accuracy
+% corresponds to which color. The y-axis specifies the time at which the
+% classifier was trained. The x-axis specifies the time at which it was
+% tested.
+% A striking feature in the image is a 'block' in the range 
+% 0.4 - 0.8s suggesting that there is a stable representation within this
+% time. For instance, a classifier trained at 0.4s can still decode
+% relatively well at 0.6 or 0.8s, so the representations must be very
+% similar within this time period. 
 
 %%%%%% EXERCISE 7 %%%%%%
 % Repeat the time x time classification without cross-validation. What 
@@ -328,19 +344,27 @@ ylabel('Training time'), xlabel('Test time')
 % label vector as extra parameters to the function call. Note that no
 % cross-validation is performed since the datasets are independent. It is
 % useful to use AUC instead of accuracy here, because AUC is not affected
-% by different in offset and scaling that the two datasets might have.
+% by differences in offset and scaling that the two datasets might have.
 cfg =  [];
 cfg.classifier = 'lda';
 cfg.metric     = 'auc';
 
-acc = mv_classify_timextime(cfg, dat1.trial, clabel1, dat2.trial, clabel2);
+cross_auc = mv_classify_timextime(cfg, dat1.trial, clabel1, dat2.trial, clabel2);
 
 close all
-imagesc(dat2.time, dat1.time, acc)
+imagesc(dat2.time, dat1.time, cross_auc)
 set(gca, 'YDir', 'normal')
 colorbar
 grid on
 ylabel('Participant 1 time'), xlabel('Participant 2 time')
+% The result does not look very convincing. On the positive side, training
+% at about 0.4s and testing in the same range (0.3-0.5s) yields a
+% performance of close to 0.8 AUC which can be expected. 
+% However, there is a strange result as well: training at
+% about -0.18s also allows successful decoding in the 0.3-0.5s range. It 
+% is likely that this effect is coincidental and that it disappears when
+% the analysis is repeated for different combinations of participants
+% and the average across these analyses is plotted.
 
 %%%%%% EXERCISE 8 %%%%%%
 % Repeat the cross-classification but train on participant 1 and test on
@@ -354,42 +378,43 @@ ylabel('Participant 1 time'), xlabel('Participant 2 time')
 % called mv_plot_result. It plots the results and nicely lays out the axes
 % for us. To be able to use it, we need the result struct, which is simply
 % the second output argument of any classification function.
-
 % Let's test the visualization for 2D data first 
 X = mean(dat.trial(:,:,100), 3);
 
 cfg = [];
 cfg.metric = 'auc';
-[perf, result] = mv_classify(cfg, X, clabel);
+[~, result] = mv_classify(cfg, X, clabel);
 
 % now call it passing result as an input argument. We will obtain a barplot
 % representing the AUC. The height of the bar is equal to the value of
 % perf. The errorbar is the standard deviation across folds and
 % repetitions, an heuristic marker of how variable the performance measure
 % is for different test sets.
+close all
 mv_plot_result(result)
 
 % Next, let us perform classification across time. The result will be a
-% time series of AUCs. The linea represents the mean (equal to the values 
+% time series of AUCs. The line represents the mean (equal to the values 
 % in perf), the shaded area is again the standard deviation across
 % folds/repeats.
 cfg = [];
 cfg.metric = 'auc';
-[perf, result] = mv_classify_across_time(cfg, dat.trial, clabel);
+[~, result] = mv_classify_across_time(cfg, dat.trial, clabel);
 
 mv_plot_result(result)
 
-% the x-axis depicts the sample number, not the real time index. To get the
-% x-axis right, we can provide the correct values as an extra argument to
-% the function call
+% the x-axis depicts the sample number, not the actual time points. To get the
+% x-axis right, we can provide the time points as an extra argument to
+% the function call. The effect is that the x-axis is now in seconds relative
+% to trial onset.
 mv_plot_result(result, dat.time)
 
 % Lastly, let us try time generalization (time x time classification). For
 % the resultant plot, both the x-axis and the y-axis need to be specified.
 % Therefore, we pass the parameter dat.time twice.
 cfg = [];
-cfg.metric = 'precision';
-[perf, result] = mv_classify_timextime(cfg, dat.trial, clabel);
+cfg.metric = 'auc';
+[~, result] = mv_classify_timextime(cfg, dat.trial, clabel);
 
 g = mv_plot_result(result, dat.time, dat.time);
 
@@ -397,9 +422,10 @@ g = mv_plot_result(result, dat.time, dat.time);
 % which may be convenient when customizing the layout of the plots.
 
 %%%%%% EXERCISE 9 %%%%%%
-% What happens to the plot when you request multiple metrics at once, for
-% instance, precision, recall and AUC?
+% What happens when you call mv_plot_result and you calculated multiple
+% metrics at once e.g. precision, recall and F1 score?
 %%%%%%%%%%%%%%%%%%%%%%%%
+
 
 %% SOLUTIONS TO THE EXERCISES
 %% SOLUTION TO EXERCISE 1
@@ -511,7 +537,9 @@ auc = mv_classify_timextime(cfg, dat.trial, clabel);
 % similar. However, a diagonal appears running from the bottomn left to the 
 % top right. This is because, without cross-validation, we get some
 % overfitting (this is why we have good classification performance even in 
-% the pre-stimulus phase). Cross-validation prevents this from happening.
+% the pre-stimulus phase). This is especially evident on the diagonal
+% because here train and test samples are identical.
+% Cross-validation prevents this from happening.
 figure
 imagesc(dat.time, dat.time, auc)
 set(gca, 'YDir', 'normal')
@@ -531,10 +559,10 @@ cfg = [];
 cfg.classifier = 'lda';
 cfg.metric     = 'auc';
 
-acc = mv_classify_timextime(cfg, dat2.trial, clabel2, dat1.trial, clabel1);
+cross_auc2 = mv_classify_timextime(cfg, dat2.trial, clabel2, dat1.trial, clabel1);
 
 figure
-imagesc(dat2.time, dat1.time, acc)
+imagesc(dat2.time, dat1.time, cross_auc2+cross_auc)
 set(gca, 'YDir', 'normal')
 colorbar
 grid on
@@ -542,21 +570,25 @@ ylabel('Participant 2 time'), xlabel('Participant 1 time')
 
 %% SOLUTION TO EXERCISE 9
 % With multiple metrics, the mv_plot_result function simply creates
-% multiple figures, one for each metric. Note that the name of the metric
-% appears on the y-axis or on top of the colorbar.
-X = mean(dat.trial(:,:,100), 3);
-
+% multiple figures, one for each metric. We will illustrate this here for
+% the different types of plots we generated in this tutorial
 cfg = [];
-cfg.metric = {'precision', 'recall'};
-[perf, result] = mv_classify(cfg, X, clabel);
+cfg.metric = {'precision' 'recall' 'f1'};
+
+close all
+
+% Classify a single time point: we obtain three bar plots. The y-axis
+% label shows which of the metrics is depicted.
+X = mean(dat.trial(:,:,100), 3);
+[~, result] = mv_classify(cfg, X, clabel);
 mv_plot_result(result)
 
-cfg = [];
-cfg.metric = {'precision', 'recall'};
-[perf, result] = mv_classify_across_time(cfg, dat.trial, clabel);
+% Classification across time: we obtain three line plots. Again the y-axis
+% shows which of the metrics is depicted.
+[~, result] = mv_classify_across_time(cfg, dat.trial, clabel);
 mv_plot_result(result, dat.time)
 
-cfg = [];
-cfg.metric = {'precision', 'recall'};
-[perf, result] = mv_classify_timextime(cfg, dat.trial, clabel);
+% Classify time x time: we obtain three images. The name of the metric 
+% appears on top of the colorbar.
+[~, result] = mv_classify_timextime(cfg, dat.trial, clabel);
 mv_plot_result(result, dat.time, dat.time);

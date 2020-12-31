@@ -4,10 +4,9 @@
 % get started with regression. It covers the following topics:
 %
 % (1) Loading example data
-% (2) Cross-validation and explanation of the cfg struct
-% (3) Classification of data with a time dimension
-% (4) Time generalization (time x time classification)
-% (5) Plotting results
+% (2) Regression with cross-validation and explanation of the cfg struct
+% (3) Plotting results
+% (4) Compare Ridge, Kernel Ridge, and Support Vector Regression
 %
 % It is recommended that you work through this tutorial step by step. To
 % this end, copy the line of code that you are currently reading and paste
@@ -29,7 +28,7 @@
 %
 % Documentation:
 % The Github Readme file is the most up-to-date documentation of the
-% toolbox. You will find an explanation of the function, classifiers,
+% toolbox. You will find an explanation of the functions, models,
 % metrics and parameters there: github.com/treder/MVPA-Light/blob/master/README.md
 %
 % Next steps: Once you finished this tutorial, you can continue with one
@@ -42,111 +41,163 @@
 close all
 clear
 
-%% (1) Loading example data
-% MVPA-Light comes with example datasets to get you started right away. 
-% The dataset is taken from this study: 
-% https://iopscience.iop.org/article/10.1088/1741-2560/11/2/026009/meta
-% The data has been published at
-% http://bnci-horizon-2020.eu/database/data-sets (dataset #15). Out of this
-% data, 
-%
-% Here, it will be explained how to load the data and how to use it.
-% MVPA-Light has a custom function, load_example_data, which is exclusively
-% used for loading the example datasets shipped with the toolbox. Let's
-% load one of the datasets:
+%% (1) Simulate ERP data for regression
 
-% Load data (which is located in the MVPA-Light/examples folder)
-[dat, clabel] = load_example_data('epoched3');
+% MVPA-Light does not come with a EEG dataset prepared for regression.
+% Therefore, we will use the simulate_erp_peak function to create an
+% artificial dataset. We simulate a event-related EEG dataset that has a 
+% ERP peak whose amplitude varies from trial to trial. We will then
+% create a target variable y which is serves as a proxy to this amplitude
+% and will be used as a target in our regression problem.
 
-% We loaded a dataset called 'epoched3' and it returned two variables, dat
-% and clabel. Now type dat in the console:
-dat
+n_trials = 300;
+time = linspace(-0.2, 1, 201);
+n_time_points = numel(time);
+pos = 100;          % position of ERP peak in samples
+width = 10;         % width of ERP peak in samples
+amplitude = 3*randn(n_trials,1) + 3; % amplitudes of ERP peak (different in each trial)
+weight = abs(randn(64, 1)); % projection weight from ERP signal to 64 electrodes 
+scale = 1; % scale of the noise
 
-% dat is actually a FieldTrip structure, but we are only interested in the
-% data contained in the dat.trial field for now. Let us assign this data to 
-% the variable X and then look at the size of X:
-X = dat.trial;
-size(X)
+X = simulate_erp_peak(n_trials, n_time_points, pos, width, amplitude, weight, [], scale);
 
-% It has the dimensions 313 x 30 x 131. The other variable is the class
-% labels which can be used for classification. In this tutorial, we are
-% interested in regression and therefore we will ignore this variable
-% (check out getting_started_with_classification to learn more about clabel
-% and how it's used in classification). For now, we will ignore the fact
-% that there is different classes are we will frame a simple regression
-% problem in the next section.
+% Plot some single trials (different lines represent different electrodes)
+figure
+subplot(1,3,1), plot(time, squeeze(X(1,:,:))'), title('Trial 1 (all channels)')
+subplot(1,3,2), plot(time, squeeze(X(11,:,:))'), title('Trial 11 (all channels)')
+subplot(1,3,3), plot(time, squeeze(X(200,:,:))'), title('Trial 200 (all channels)')
 
+% Calculate the average ERP (different lines represent different electrodes)
+figure
+plot(time, squeeze(mean(X,1))')
+title('Average')
+xlabel('Time'), ylabel('Amplitude')
 
-%%
-%%% In this example we look at regression tasks. We will use the same
-%%% datasets used in the classification examples. Since no response
-%%% variable (e.g. reaction time) was recorded we will use the number of
-%%% the trial (as a proxy for time in the experiment) as response variable.
-%%% This can tell us whether there are changes in amplitude across the
-%%% duration of the experiment. 
+% Now it's time to create the target variable y. In a real experiment, y 
+% could be reaction time or trial number. Since our data is artificial, we 
+% create y from the amplitude. In particular, we create y as a noisy
+% version of the ERP amplitude:
+y = amplitude + 0.5 * randn(n_trials, 1);
 
-close all
-clear all
+%% (2) Regression with cross-validation and explanation of the cfg struct
 
-% Load data (in /examples folder)
-[dat,clabel,chans] = load_example_data('epoched1');
-
-% keep only class 2
-dat.trial = dat.trial(clabel==2, :, :);
-
-% the response variable is simply the number of the trial
-y = [1:size(dat.trial, 1)]';
-
-% [dat2,clabel2] = load_example_data('epoched2');
-% [dat3,clabel3] = load_example_data('epoched3');
-
-% Plot data
-close
-h1= plot(dat.time, squeeze(mean(dat.trial, 1)), 'r'); hold on
-grid on
-xlabel('Time [s]'),ylabel('EEG amplitude')
-title('ERP')
-
-%% Regression on the [0.2 - 0.3] s ERP component
-
-% mark the start and end of component in the plot
-yl = ylim;
-plot([0.2, 0.2], yl, 'k--'); 
-plot([0.3, 0.3], yl, 'k--');
-
-time_points = find( (dat.time >= 0.2) & (dat.time <= 0.3) );
-
-X = squeeze(mean(dat.trial(:, :, time_points), 3));
-
-% Set up the structure with options for mv_regress
+% The main function for performing regression is mv_regress. Let's jump straight into it:
 cfg = [];
-cfg.model   = 'ridge';               % ridge regression (inludes linear regression)
-cfg.hyperparameter.lambda = [ 0, 1, 2, 10];
-cfg.metric  = {'mse', 'mean_absolute_error'}; % can be abbreviated as 'mae'
-cfg.dimension_names = {'samples' 'channels'};
+perf = mv_regress(cfg, X, y);
 
-% Call mv_regress to perform the regression 
+% There seems to be a lot going on here, so let's unpack the questions that
+% might come up:
+% 1. What happened? If we read the output on the console, we can figure out
+% the following: mv_regress performed a cross-validation regression
+% analysis using 5-fold cross-validation (k=5), 5 repetitions, using an 
+% RIDGE regression model. This is simply the default behaviour if we don't 
+% specify anything else.
+
+% 2. What is perf? Perf refers to 'performance metric', a measure of how
+% good of a job the model did. By default, it calculates the mean absolute
+% error (or MAE for short). Since the regression is performed for each time
+% point, we get a vector of MAEs (one for each of the 131 time points). The
+% MAE has been cross-validated, that is, separate partitions of the data
+% have been used for training and testing.
+close all
+plot(time, perf)
+xlabel('Time'), ylabel('MAE')
+% We can see that the MAE is lowest at the time of the ERP peak. This makes
+% sense because this is when the variable y is clearly related to the data.
+
+% 3. What does cfg do, it was empty after all?
+% cfg controls all aspects of the analysis: choosing the
+% model, a metric, preprocessing and defining the cross-validation. If
+% it is unspecified, it is simply filled with default values. 
+
+%%%%%% EXERCISE 1 %%%%%%
+% The regression model can be specified by setting cfg.model = ... 
+% Look at the available models at 
+% https://github.com/treder/MVPA-Light#regression-models-
+% Run the analysis again, this time using a Kernel Ridge model with a
+% polynomial kernel.
+%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Now we know how to set a model, let's see how we can change the
+% metric that we want to be calculated.  Let's go for R-squared 
+% metric instead of MAE. R-squared represents the proportional variance
+% explained by the model.
+% A list of metrics is available at https://github.com/treder/MVPA-Light#regression-performance-metrics
+cfg             = [];
+cfg.metric      = 'r_squared';
+perf = mv_regress(cfg, X, y);
+
+% We can also calculate both R-squared and MAE at the same time using a cell
+% array. Now perf will be a cell array, the first cell is the R-squared values,
+% the second value is MAEs. 
+cfg = [];
+cfg.metric      = {'r_squared', 'mae'};
+perf = mv_regress(cfg, X, y);
+
+perf
+
+%%%%%% EXERCISE 2 %%%%%%
+% Look at the available classification metrics at 
+% https://github.com/treder/MVPA-Light#regression-performance-metrics
+% Run the analysis again, this time calculating mean squared error.
+%%%%%%%%%%%%%%%%%%%%%%%%
+
+% We know now how to define the classifier and the performance metric. We
+% still need to understand how to change the cross-validation scheme. Let us
+% perform k-fold cross-validation with 10 folds (i.e. 10-fold
+% cross-validation) and 2 repetitions. Note how the output on the console 
+% changes.
+cfg = [];
+cfg.k           = 10;
+cfg.repeat      = 2;
+perf = mv_regress(cfg, X, y);
+
+%%%%%% EXERCISE 3 %%%%%%
+% Look at the description of cross-validation at 
+% https://github.com/treder/MVPA-Light/blob/master/README.md#cv
+% Do the classification again, but instead of k-fold cross-validation use
+% a holdout set and hold out 20% of the data for testing.
+%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%% (3) Plotting results
+% So far, we have plotted the results by hand using Matlab's plot
+% function. For a quick and dirty visualization, MVPA-Light has a function
+% called mv_plot_result. It plots the results and nicely lays out the axes
+% for us. To be able to use it, we need the result struct, which is simply
+% the second output argument of mv_regress.
+cfg             = [];
 [perf, result] = mv_regress(cfg, X, y);
+
+% Now call mv_plot_result  passing result as an input argument. We will obtain 
+% line plot representing MAE across time.
+% The shaded area represents the standard deviation across folds and
+% repetitions, an heuristic marker of how variable the performance measure
+% is for different test sets.
+close all
+mv_plot_result(result)
+
+% We can name the dimensions of X. The dimension names will be added to the
+% output, and the x-axis will be labeled as time points when we plot the
+% result again
+cfg             = [];
+cfg.dimension_names = {'samples' 'channels', 'time points'}; 
+[~, result] = mv_regress(cfg, X, y);
 
 mv_plot_result(result)
 
-%% Regression across time
-% Perform the same regression but this time for every time point, yielding
-% MAE as a function of time
+% The x-axis depicts the sample number, not the actual time points. To get the
+% x-axis right, we can provide the time points as an extra argument to
+% the function call. The effect is that the x-axis is now in seconds relative
+% to trial onset.
+mv_plot_result(result, time)
 
-% Set up the structure with options for mv_regress
-cfg = [];
-cfg.model   = 'ridge';
-cfg.metric  = 'mae';                 % = mean absolute error
-cfg.dimension_names = {'samples' 'channels', 'time points'};
+%%%%%% EXERCISE 4 %%%%%%
+% Calculate MSE, MAE, and R-squared at once and plot them using
+% mv_plot_result
+%%%%%%%%%%%%%%%%%%%%%%%%
 
-[perf, result] = mv_regress(cfg, dat.trial, y);
-
-% ax = mv_plot_1D(dat.time, perf, result.perf_std, 'ylabel', cfg.metric)
-mv_plot_result(result, dat.time)
-
-
-%% Compare ridge regression / kernel ridge / Support Vector Regression
+%% (4) Compare Ridge, Kernel Ridge, and Support Vector Regression
 % To illustrate how kernels tackle non-linear problems, we will
 % here create an 1-dimensional non-linear dataset. We will then train ridge
 % regression, kernel ridge, and Support Vector Regression (SVR) models and
@@ -154,11 +205,12 @@ mv_plot_result(result, dat.time)
 % Note: The SVR model requires an installation of LIBSVM, see
 % train_libsvm.m for details
 
+% We simulate sinusoidal data with a quadratic trend
 x = linspace(0, 12, 100)';
 y = -.1*x.^2 + 3*sin(x);     % SINUSOID WITH QUADRATIC TREND
-% y = 2*mod(x, 3) + 0.4 * x; % SAWTOOTH FUNCTION
 y_plus_noise  = y + randn(length(y), 1);
 
+% plot simulated data
 close all
 plot(x,y, 'r', 'LineWidth', 2)
 hold on
@@ -166,29 +218,31 @@ plot(x,y_plus_noise, 'ko')
 legend({'Signal' 'Signal plus noise'})
 title('True signal and data')
 
-% Train ridge model and get predicted values 
-param = mv_get_hyperparameter('ridge');
-model = train_ridge(param, x, y);
+
+% We want to plot the predictions of the models, not some summary
+% statistic such as MAE. To this end, we perform training and testing by
+% hand:
+% Ridge Regression: Train model and get predicted values
+param_ridge = mv_get_hyperparameter('ridge');
+model = train_ridge(param_ridge, x, y_plus_noise);
 y_ridge = test_ridge(model, x);
 
-% Train kernel ridge model and get predicted values 
-param = mv_get_hyperparameter('kernel_ridge');
-% param.kernel = 'polynomial';
-model = train_kernel_ridge(param, x, y);
+% Kernel Ridge: Train model and get predicted values
+param_krr = mv_get_hyperparameter('kernel_ridge');
+model = train_kernel_ridge(param_krr, x, y_plus_noise);
 y_kernel_ridge = test_kernel_ridge(model, x);
 
-% Train SVR model and get predicted values.
+% SVR: Train model and get predicted values
 % We will use the LIBSVM toolbox here, which supports both 
 % classification (SVM) and regression (SVR).
-param = mv_get_hyperparameter('libsvm');
-
+param_svr = mv_get_hyperparameter('libsvm');
 % Set svm_type to 3 for support vector regression
-param.svm_type = 3; 
-model = train_libsvm(param, x, y);
+param_svr.svm_type = 3; 
+model = train_libsvm(param_svr, x, y_plus_noise);
 y_svr = test_libsvm(model, x);
 
+% Plot the data and the predictions of the three models in a plot
 figure,hold on
-% plot(x,y, 'r', 'LineWidth', 2)  % true signal
 plot(x,y_plus_noise, 'ko')
 plot(x, y_ridge, 'b')   % ridge prediction
 plot(x, y_kernel_ridge, 'k')   % kernel ridge prediction
@@ -196,168 +250,83 @@ plot(x, y_svr, 'g')   % SVR prediction
 
 legend({'Data' 'Ridge regression' 'Kernel ridge' 'SVR'})
 title('Predictions')
+% We can see that the Ridge models underfits the data. It produces a
+% straight line that cannot fully model the complexity of the data. In
+% contrast, the Kernel Ridge and SVR models nicely model the nonlinear
+% data. Their predictions are close to the true underlying function.
 
-
-
-
-
+%%%%%% EXERCISE 5 %%%%%%
+% Perform the same analysis using data that represents a sawtooth function.
+% The formula is given by 
+% y = 2*mod(x, 3) + 0.4 * x; % SAWTOOTH FUNCTION
+%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% SOLUTIONS TO THE EXERCISES
 %% SOLUTION TO EXERCISE 1
-% We only need to find the index of channel Fz, the rest is the same
-ix = find(ismember(dat.label, 'Fz'));
-figure
-plot(dat.time, ERP_attended(ix, :))
-hold all, grid on
-plot(dat.time, ERP_unattended(ix, :))
-
-legend({'Attended' 'Unattended'})
-title('ERP at channel Fz')
-xlabel('Time [s]'), ylabel('Amplitude [muV]')
-
-%% SOLUTION TO EXERCISE 2
-% Looking in the Readme file, we can see that the Naive Bayes classifier
-% is denoted as naive_bayes 
+% The Kernel Ridge model is denoted as kernel_ridge.
 cfg = [];
-cfg.classifier  = 'naive_bayes';
+cfg.model   = 'kernel_ridge';
+cfg.hyperparameter = [];
+cfg.hyperparameter.kernel = 'polynomial';
 
-perf = mv_classify(cfg, X, clabel);
-
-%% SOLUTION TO EXERCISE 3
-% Looking at the Readme file, we can see the precision and recall are
-% simply denoted as 'precision' and 'recall'
-cfg = [];
-cfg.metric      = {'precision', 'recall'};
-perf = mv_classify(cfg, X, clabel);
-fprintf('Precision = %0.2f, Recall = %0.2f\n', perf{:})
-
-%% SOLUTION TO EXERCISE 4
-% Leave-one-out cross-validation is called 'leaveout' and we need to set
-% the cv field to define it. Now, you will see that we have 313 folds and
-% only one repetition: In leave-one-out cross-validation, each of the 313
-% samples is held out once (giving us 313 folds). It does not make sense to
-% repeat the cross-validation more than once, since there is no randomness
-% in assigning samples to test folds any more (every sample is in a test
-% fold once).
-cfg = [];
-cfg.cv      = 'leaveout';
-perf = mv_classify(cfg, X, clabel);
-
-%% SOLUTION TO EXERCISE 5
-% Cross-validation relies on random assignments of samples into folds. This
-% randomness leads to some variability in the outcome. For instance, let's
-% assume you find a AUC of 0.78. When you rerun the analysis it changes to
-% 0.75 or 0.82. Having multiple repetitions and averaging across them
-% stabilizes the estimate.
-%
-% We can check this empirically by first running a classification analysis
-% several times with 1 repeat and then comparing it to 5 repeats. For the 5
-% repeats, the variability (=standard deviation) of the classification
-% scores should be smaller than for the 1 repeat case, illustrating that
-% it is more stable/replicable.
-
-one_repeat = zeros(10,1);
-five_repeats = zeros(10,1);
-
-% for simplicity and speed, we reduce the data to 2D 
-X = dat.trial(:,:,floor(end/2));
-
-% one repeat
-cfg = [];
-cfg.repeat      = 1;
-cfg.feedback    = 0;  % suppress output
-for ii=1:10
-    one_repeat(ii) = mv_classify(cfg, X, clabel);
-end
-
-% five repeats
-cfg = [];
-cfg.repeat      = 5;
-cfg.feedback    = 0;  % suppress output
-for ii=1:10
-    five_repeats(ii) = mv_classify(cfg, X, clabel);
-end
-
-one_repeat'
-five_repeats'
-
-fprintf('Std for one repeat: %0.5f\n', std(one_repeat))
-fprintf('Std for five repeats: %0.5f\n', std(five_repeats))
-
-%% SOLUTION TO EXERCISE 6
-% We simply set cfg.classifier, cfg.metric, cfg.k and cfg.repeat to the
-% required values and then perform the classification.
-X = dat.trial;
-
-cfg = [];
-cfg.classifier      = 'logreg';
-cfg.metric          = 'kappa';
-cfg.k               = 20;
-cfg.repeat          = 1;
-perf = mv_classify_across_time(cfg, X, clabel);
+perf = mv_regress(cfg, X, y);
 
 close all
-plot(dat.time, perf, 'o-')
-grid on
-xlabel('Time'), ylabel(cfg.metric)
-title('Classification across time')
+plot(time, perf)
+xlabel('Time'), ylabel('MAE'), title('Kernel Ridge with polynomial kernel')
 
-%% SOLUTION TO EXERCISE 7
+%% SOLUTION TO EXERCISE 2
+% Mean Squared Error is denoted as either 'mse' or 'mean_squared_error'
 cfg = [];
-cfg.cv          = 'none';
-cfg.metric      = 'auc';
-auc = mv_classify_timextime(cfg, dat.trial, clabel);
+cfg.metric  = 'mse';
+perf = mv_regress(cfg, X, y);
 
-% when cross-validation is turned off, most of the pattern is very
-% similar. However, a diagonal appears running from the bottomn left to the 
-% top right. This is because, without cross-validation, we get some
-% overfitting (this is why we have good classification performance even in 
-% the pre-stimulus phase). Cross-validation prevents this from happening.
-figure
-imagesc(dat.time, dat.time, auc)
-set(gca, 'YDir', 'normal')
-colorbar
-grid on
-ylabel('Training time'), xlabel('Test time')
-title('No cross-validation')
+close all
+plot(time, perf)
 
-%% SOLUTION TO EXERCISE 8
-% We just need to reverse the order of the arguments, feeding in dat2 and
-% clabel2 first and then dat1 and clabel1. The result is not the same, but
-% this is not to be expected: in cross-decoding we identify discriminative
-% patterns in the first dataset and then look for them in the second
-% dataset. The discriminative patterns for two subjects are likely
-% different.
+%% SOLUTION TO EXERCISE 3
+% To define a holdout set, we need to set cv to 'holdout'. Then cfg.p
+% defines the proportion of data in the test set. 20% corresponds to 0.2.
+% In each repetition, we now only have a single fold, since we use a single
+% holdout set as test data.
 cfg = [];
-cfg.classifier = 'lda';
-cfg.metric     = 'auc';
+cfg.cv      = 'holdout';
+cfg.p       = 0.2;
+perf = mv_regress(cfg, X, y);
 
-acc = mv_classify_timextime(cfg, dat2.trial, clabel2, dat1.trial, clabel1);
-
-figure
-imagesc(dat2.time, dat1.time, acc)
-set(gca, 'YDir', 'normal')
-colorbar
-grid on
-ylabel('Participant 2 time'), xlabel('Participant 1 time')
-
-%% SOLUTION TO EXERCISE 9
-% With multiple metrics, the mv_plot_result function simply creates
-% multiple figures, one for each metric. Note that the name of the metric
-% appears on the y-axis or on top of the colorbar.
-X = mean(dat.trial(:,:,100), 3);
-
+%% SOLUTION TO EXERCISE 4
 cfg = [];
-cfg.metric = {'precision', 'recall'};
-[perf, result] = mv_classify(cfg, X, clabel);
-mv_plot_result(result)
+cfg.metric  = {'mse' 'mae' 'r_squared'};
+[~, result] = mv_regress(cfg, X, y);
 
-cfg = [];
-cfg.metric = {'precision', 'recall'};
-[perf, result] = mv_classify_across_time(cfg, dat.trial, clabel);
-mv_plot_result(result, dat.time)
+mv_plot_result(result, time)
 
-cfg = [];
-cfg.metric = {'precision', 'recall'};
-[perf, result] = mv_classify_timextime(cfg, dat.trial, clabel);
-mv_plot_result(result, dat.time, dat.time);
+%% SOLUTION TO EXERCISE 5
+% We only need to re-calculate the predictions y and then train/test the
+% three regression models again
+y = 2*mod(x, 3) + 0.4 * x; % SAWTOOTH FUNCTION
+y_plus_noise  = y + randn(length(y), 1);
+
+% train and test the regression models
+model = train_ridge(param_ridge, x, y_plus_noise);
+y_ridge = test_ridge(model, x);
+
+model = train_kernel_ridge(param_krr, x, y_plus_noise);
+y_kernel_ridge = test_kernel_ridge(model, x);
+
+model = train_libsvm(param_svr, x, y_plus_noise);
+y_svr = test_libsvm(model, x);
+
+% Plot the data and the predictions of the three models in a plot
+figure,hold on
+plot(x,y, 'r-')  % true signal 
+plot(x,y_plus_noise, 'ko')  % data (signal plus noise)
+plot(x, y_ridge, 'b')   % ridge prediction
+plot(x, y_kernel_ridge, 'k')   % kernel ridge prediction
+plot(x, y_svr, 'g')   % SVR prediction
+
+legend({'Sawtooth function (signal)' 'Data (signal+noise)' 'Ridge regression' 'Kernel ridge' 'SVR'})
+title('Predictions for sawtooth function')
+% Again, Ridge underfits the data with a line. Better results are
+% obtained with Kernel Ridge and SVR, which smoothly approximate the
+% sawtooth function.
