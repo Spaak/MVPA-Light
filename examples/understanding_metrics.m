@@ -13,29 +13,6 @@
 %     and the metrics MAE and MSE
 % (4) Classification: Compare classification metrics
 %
-% It is recommended that you work through this tutorial step by step. To
-% this end, copy the line of code that you are currently reading and paste
-% it into the Matlab console. 
-%
-% There will be exercises throughout the tutorial. Try to do the exercise,
-% you can then check your code against the solution at the end of this
-% file.
-%
-% Note: we will use machine learning terminology such as cross-validation,
-% features, classifier, train and test set. If you are unfamiliar with
-% these terms, please check out the glossary in section 1.1 of the
-% MVPA-Light paper (www.frontiersin.org/articles/10.3389/fnins.2020.00289)
-% and read the tutorial papers that are mentioned there.
-%
-% Troubleshooting: If the code crashes on your computer, make sure that you
-% always have the latest version of the toolbox and that you are using
-% Matlab version 2012 or newer.
-%
-% Documentation:
-% The Github Readme file is the most up-to-date documentation of the
-% toolbox. You will find an explanation of the function, classifiers,
-% metrics and parameters there: github.com/treder/MVPA-Light/blob/master/README.md
-%
 % Note: If you are new to working with MVPA-Light, make sure that you
 % complete the introductory tutorials first:
 % - getting_started_with_classification

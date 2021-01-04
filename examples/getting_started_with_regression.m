@@ -36,7 +36,7 @@
 % - understanding_preprocessing: how to use the cfg.preprocess field for
 %   nested preprocessing
 % - understanding_train_and_test_functions: how to train and test models
-%   directly, without using the high-level interface (e.g. mv_classify)
+%   directly, without using the high-level interface
 
 close all
 clear
@@ -215,7 +215,7 @@ close all
 plot(x,y, 'r', 'LineWidth', 2)
 hold on
 plot(x,y_plus_noise, 'ko')
-legend({'Signal' 'Signal plus noise'})
+legend({'True signal' 'Data (signal plus noise)'})
 title('True signal and data')
 
 

@@ -8,6 +8,8 @@
 % (3) Classification of data with a time dimension
 % (4) Time generalization (time x time classification)
 % (5) Plotting results
+% (6) Searchlight analysis
+% (7) Hyperparameters
 %
 % It is recommended that you work through this tutorial step by step. To
 % this end, copy the line of code that you are currently reading and paste
@@ -322,6 +324,16 @@ ylabel('Training time'), xlabel('Test time')
 % relatively well at 0.6 or 0.8s, so the representations must be very
 % similar within this time period. 
 
+% Note that mv_classify_timextime is mostly a convenience function. Time
+% generalization can be performed using mv_classify, too. mv_classify can
+% generalize over any dimension. Since our data is [samples x features x
+% time] and we want to generalize over the 3rd dimension (time), we need to
+% set cfg.generalization_dimension = 3.
+cfg = [];
+cfg.metric      = 'auc';
+cfg.generalization_dimension      = 3;
+auc2 = mv_classify(cfg, dat.trial, clabel);
+
 %%%%%% EXERCISE 7 %%%%%%
 % Repeat the time x time classification without cross-validation. What 
 % do you notice?
@@ -424,6 +436,179 @@ g = mv_plot_result(result, dat.time, dat.time);
 %%%%%% EXERCISE 9 %%%%%%
 % What happens when you call mv_plot_result and you calculated multiple
 % metrics at once e.g. precision, recall and F1 score?
+%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% (6) Searchlight analysis
+% 
+% Searchlight analysis aims to combine the advantages of multivariate 
+% approaches such as classifiers (high statistical power) with the
+% advantages of univariate approaches (high localizability and therefore
+% interpretability). It strikes a balance between localization and
+% statistical power. Imagine you not only want to know whether two classes
+% (eg face vs house images) can be discriminated but also which EEG
+% electrodes are most important for this classification. Searchlight
+% analysis is one approach to localize multivariate effects.
+%
+% A good reference for searchlight analysis is the following paper:
+% Kriegeskorte N, Goebel R, Bandettini P. Information-based functional brain mapping. 
+% Proc Natl Acad Sci U S A. 2006 Mar 7;103(10):3863-8. doi: 10.1073/pnas.0600244103. 
+% Epub 2006 Feb 28. PMID: 16537458; PMCID: PMC1383651.
+% https://pubmed.ncbi.nlm.nih.gov/16537458/
+
+% Load the data again, but this time we will keep a third output argument
+% chans which describes the layout of the EEG channels. It will be useful
+% for plotting the result.
+[dat, clabel, chans] = load_example_data('epoched3');
+
+% We start off with our 3D data which is [samples x electrodes x time
+% points]. We want to know which electrodes contribute most to the
+% classification outcome. To this end, we will now perform a classification
+% for each electrode separately. As features, we will use all time points.
+% This can easily be realized in mv_classify by defining which dimension 
+% represents the features: by default this is dimension 2 (electrodes), so
+% we will set it to dimension 3 (time points).
+cfg = [];
+cfg.metric              = 'auc';
+cfg.feature_dimension   = 3;
+cfg.dimension_names     = {'samples' 'electrodes' 'time points'}; % name the dimensions for nicer output
+[perf, result] = mv_classify(cfg, dat.trial, clabel);
+
+% The resultant plot shows that each electrode contains information about
+% the classes
+mv_plot_result(result)
+
+% However, the visualization is not great: It would be nice to see the
+% result as a spatial topography. We can use the function
+% mv_plot_topography for this and we will need the chans.pos field which
+% represents the 2D coordinates of the electrodes.
+cfg_plot = [];
+cfg_plot.outline = chans.outline;
+figure
+mv_plot_topography(cfg_plot, perf, chans.pos);
+colormap jet
+% This plot contains the same information as the line plot produced by
+% mv_plot_result, but its spatial layout makes it easier to interpret the
+% result: we can now appreciate that occipital and left parietal and 
+% central electrodes contribute most to classification performance.
+
+%%%%%% EXERCISE 10 %%%%%%
+% Classification across time (section 3) can also be interpreted as a type
+% of searchlight analysis: instead of classifying all electrodes separately
+% (using time points as features), in classification across time we
+% classify each time point separately (using electrodes as features). 
+% Change the value of cfg.feature_dimension in the searchlight analysis to
+% perform classification across time.
+%%%%%%%%%%%%%%%%%%%%%%%%
+
+% So far, we used classified electrode separately. We can increase the size
+% of our searchlight by considering an electrode and its direct neighbours
+% for classification, and then contributing the classification result to
+% this electrode. We first must find out which electrodes are neighbours of
+% each other. To this end, build a distance matrix giving the pair-wise 
+% distances between electrodes using the chans.pos field.
+nb_mat = squareform(pdist(chans.pos));
+% Eg nb_mat(2,5) is the 2D distance between electrodes 2 and 5
+
+% From this matrix, we can define neighbours by setting a cutoff value. All
+% electrodes closer to each other than the cutoff value are considered as
+% neighbours.
+cutoff = 0.2;
+electrode_neighbours =  (nb_mat < cutoff);
+
+% if we sum each column we get the number of neighbours each electrode has
+sum(electrode_neighbours)
+% Eg the 1st electrode has 2 neighbours, and the 3rd electrode has 5
+% neighbours.
+
+% Now let us rerun the analysis, specifying the cfg.neighbours field
+cfg = [];
+cfg.metric              = 'auc';
+cfg.feature_dimension   = 3;
+cfg.neighbours          = electrode_neighbours;  % pass the neighbours matrix
+cfg.dimension_names     = {'samples' 'electrodes' 'time points'};
+perf = mv_classify(cfg, dat.trial, clabel);
+
+% plot the result
+cfg_plot = [];
+cfg_plot.outline = chans.outline;
+figure
+mv_plot_topography(cfg_plot, perf, chans.pos);
+colormap jet
+title('With neighbours')
+% We see that now the best classification performance is achieved for
+% left central electrodes.
+
+% Now let us get back to classification across time and re-use the notion
+% of neighbours: The neighbour of a time point will be defined as the
+% immediately preceding and following time point. For instance, the
+% neighbours of the time point 100 are the time points 99 and 101. 
+% We can encode this is the neighbours matrix by specifying a diagonal
+% matrix that contains the main diagonal and the two neighbouring
+% off-diagonals
+n_time = numel(dat.time);
+I = eye(n_time); % diagonal: it specifies that each time point is a neighbour of itself
+offdiag = diag(ones(n_time-1, 1),1) + diag(ones(n_time-1, 1),-1); % preceding and following time points
+time_neighbours      = I + offdiag;
+
+% To understand the structure of the matrix, let's look at its upper left
+% corner
+time_neighbours(1:5,1:5)
+% Time point 1 (row 1) has two neighbours: itself (col 1) and the following
+% time point (col 2). There is not preceding time point.
+% Time point 2 (row 2) has three neighbours: the preceding time point (col
+% 1), itself (col 2), and the following time point (col 3). 
+
+time_neighbours(end-5:end, end-5:end)
+% Looking at the bottom right corner of the matrix, we see that the same
+% pattern continues for all other time points except for the last time
+% point, which has no following time point (only a preceding time point).
+
+cfg.feature_dimension   = 2;
+cfg.neighbours          = time_neighbours;
+[perf, result] = mv_classify(cfg, dat.trial, clabel);
+
+mv_plot_result(result, dat.time)
+
+%%%%%% EXERCISE 11 %%%%%%
+% We performed searchlight analyses across both electrodes and time points.
+% Now it's time to put evrything together: Can you use my_classify to define a
+% searchlight analysis across both electrodes and time points? 
+% What are the dimensions of the result?
+% Hint: you have to leave the feature dimension empty, and you need to
+% provide both neighbours matrices as a cell array.
+%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%% (7) Hyperparameters
+% Hyperparameters control the behaviour of the classifiers. They can be
+% used to e.g. select the kernel for SVM and set the regularization
+% strength in LDA. MVPA Light is designed such that the standard settings
+% work for many classification problems, but for more fine grained control
+% of the classifier you may want ot manipulate them yourself. 
+% Hyperparameters are classifier specific, so you may want to inspect a
+% classifier's train function for a description of the hyperparameters.
+% Let's start with SVM.
+help train_svm
+
+% We can see that the kernel hyperparameter can be used to select the
+% kernel function. When using a high-level function such as
+% mv_classify_across_time, the cfg.hyperparameter field is used to specify
+% hyperparameters. Let us set the kernel to rbf
+
+cfg = [];
+cfg.classifier              = 'svm';
+cfg.hyperparameter          = [];
+cfg.hyperparameter.kernel   = 'rbf'; 
+perf_rbf = mv_classify(cfg, X, clabel);
+
+%%%%%% EXERCISE 12 %%%%%%
+% Repeat the analysis, but select a polynomial kernel of degree 3.
+%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%% EXERCISE 13 %%%%%%
+% In LDA, the shrinkage regularization hyperparameter is by default
+% estimated automatically. Can you find the hyperparameter than controls
+% the regularization strength and set it to 0.1?
 %%%%%%%%%%%%%%%%%%%%%%%%
 
 
@@ -592,3 +777,55 @@ mv_plot_result(result, dat.time)
 % appears on top of the colorbar.
 [~, result] = mv_classify_timextime(cfg, dat.trial, clabel);
 mv_plot_result(result, dat.time, dat.time);
+
+%% SOLUTION TO EXERCISE 10
+% It is very simple, we just have to set cfg.feature_dimension = 2 instead
+% of 3. This will tell mv_classify that we use electrodes as features, and
+% it will automatically loop over the 3rd dimension (time points). 
+cfg = [];
+cfg.metric = 'auc';
+cfg.feature_dimension = 2;
+cfg.dimension_names = {'samples' 'electrodes' 'time points'}; % name the dimensions for nicer output
+perf = mv_classify(cfg, dat.trial, clabel);
+
+% now the result is for each of the 131 time points
+size(perf)
+
+%% SOLUTION TO EXERCISE 11
+% We have to leave the feature dimension empty since the searchlight is to
+% be performed across both electrodes and time points. We furthermore need
+% to pass the electrode_neighbours and time_neighbours matrices as a cell
+% array.
+cfg = [];
+cfg.feature_dimension   = [];
+cfg.neighbours          = {electrode_neighbours, time_neighbours};  % pass both neighbours matrices
+cfg.dimension_names     = {'samples' 'electrodes' 'time points'};
+[perf, result] = mv_classify(cfg, dat.trial, clabel);
+
+% The result is of size 30 x 131, 30 electrodes and 131 time points.
+h = mv_plot_result(result);
+
+% We now have an image of electrodes x time: this shows us both which
+% electrodes contribute to classification and when they do. Let us add the
+% electrode labels on the y-axis to make the plot more informative:
+set(h.ax.ax,'YTick', 1:numel(dat.label), 'YTickLabel', dat.label)
+
+%% SOLUTION TO EXERCISE 12
+cfg = [];
+cfg.classifier              = 'svm';
+cfg.hyperparameter          = [];
+cfg.hyperparameter.kernel   = 'polynomial'; 
+cfg.hyperparameter.degree   = 3;
+perf_poly = mv_classify(cfg, X, clabel);
+
+%% SOLUTION TO EXERCISE 13
+% Let's look at the help first to see a list of hyperparameters
+help train_lda
+
+% We see that the parameter lambda controls the regularization strength. We
+% set it to 0.1
+cfg = [];
+cfg.classifier              = 'lda';
+cfg.hyperparameter          = [];
+cfg.hyperparameter.lambda   = 0.1;
+perf = mv_classify(cfg, X, clabel);
