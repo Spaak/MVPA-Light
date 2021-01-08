@@ -43,6 +43,9 @@
 %   nested preprocessing
 % - understanding_train_and_test_functions: how to train and test models
 %   directly, without using the high-level interface (e.g. mv_classify)
+%
+% You can also check out the Github repo https://github.com/treder/MVPA-Light-Paper
+% It contains all the analysis scripts used in the MVPA-Light paper.
 
 close all
 clear
