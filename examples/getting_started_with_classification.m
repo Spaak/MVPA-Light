@@ -12,8 +12,8 @@
 % (7) Hyperparameters
 %
 % It is recommended that you work through this tutorial step by step. To
-% this end, copy the line of code that you are currently reading and paste
-% it into the Matlab console. 
+% this end, copy the lines of code that you are currently reading and paste
+% them into the Matlab console. 
 %
 % There will be exercises throughout the tutorial. Try to do the exercise,
 % you can then check your code against the solution at the end of this
@@ -35,14 +35,12 @@
 % metrics and parameters there: github.com/treder/MVPA-Light/blob/master/README.md
 %
 % Next steps: Once you finished this tutorial, you can continue with one
-% of the other example scripts:
-% - example_classify_multidimensional_data: how to perform more complex 
-%   classification analyses using e.g. time-frequency data and searchlight
-%   analysis.
-% - understanding_preprocessing: how to use the cfg.preprocess field for
-%   nested preprocessing
-% - understanding_train_and_test_functions: how to train and test models
-%   directly, without using the high-level interface (e.g. mv_classify)
+% of the other tutorials:
+% - advanced_classification
+% - understanding_metrics
+% - understanding_preprocessing
+% - understanding_statistics
+% - understanding_train_and_test_functions
 %
 % You can also check out the Github repo https://github.com/treder/MVPA-Light-Paper
 % It contains all the analysis scripts used in the MVPA-Light paper.
@@ -56,6 +54,8 @@ clear
 % https://iopscience.iop.org/article/10.1088/1741-2560/11/2/026009/meta
 % The data has been published at
 % http://bnci-horizon-2020.eu/database/data-sets (dataset #15). 
+% A subset of this dataset has been shipped with MVPA-Light so you do not
+% need to download the data.
 %
 % Here, it will be explained how to load the data and how to use it.
 % MVPA-Light has a custom function, load_example_data, which is exclusively
@@ -87,7 +87,7 @@ unique(clabel)
 % is the number of trials (called 'samples' in MVPA-Light) in the dataset.
 % For each trial, clabel tells us which class the trial belongs to. 
 % This dataset comes from an auditory oddball paradigm, and class 1 refers
-% to trials wherein participants were presented a sound there were supposed
+% to trials wherein participants were presented a sound they were supposed
 % to attend to (attended sounds), class 2 refers to trials wherein sounds
 % were presented that the participant should not attend to (unattended
 % sounds). Let's look at class labels for the first 20 trials
@@ -161,17 +161,20 @@ ival = find(dat.time >= 0.6 & dat.time <= 0.8);  % find the time points correspo
 X = squeeze(mean(dat.trial(:,:,ival),3));
 size(X)
 
-% Note that now we went back to a different representation of the data: X
+% Note that now we went to a different representation of the data: X
 % is now 313 (samples) x 30 (channels), and the channels will serve as our
 % features. This is because classification is usually on the single-trial
 % level, we only calculated the ERPs for visualization.
 
-
 %% (2) Cross-validation and explanation of the cfg struct
-% So far we have only loaded plotted the data. In this section, we will get
-% hands on with the toolbox. We will use the output from the end of the previous
-% section, the 2D [samples x channels] matrix X representing the average EEG 
-% activity in the 0.6-0.8s interval. Let's jump straight into it:
+rng(42) % fix the random seed to make the results replicable
+
+% So far we have only loaded plotted the data. We did not do any MVPA
+% analyses yet. In this section, we will get
+% hands on with the toolbox. We use the output from the end of the previous
+% section, the 2D [samples x channels] matrix X representing the EEG 
+% activity in the 0.6-0.8s interval. Let's jump straight into it by passing
+% X, clabel and the empty cfg struct to mv_classify:
 cfg = [];
 perf = mv_classify(cfg, X, clabel);
 
@@ -242,7 +245,6 @@ cfg.k           = 10;
 cfg.repeat      = 2;
 perf = mv_classify(cfg, X, clabel);
 
-
 %%%%%% EXERCISE 4 %%%%%%
 % Look at the description of cross-validation at 
 % https://github.com/treder/MVPA-Light/blob/master/README.md#cv
@@ -266,10 +268,13 @@ X = dat.trial;
 size(X)
 
 % We can again use mv_classify. X now has 3 dimensions, but mv_classify
-% simply loops over any additional dimension. We now obtain a
-% classification accuracy for each time point. 
+% simply loops over any additional dimension. 
 cfg = [];
 perf = mv_classify(cfg, X, clabel);
+
+% Looking at the size of perf, we now obtained a classification accuracy 
+% for each of the 131 time points:
+size(perf)
 
 % When we plot it, we can see that classification performance is high 
 % between 0.2 - 0.8 sec.
@@ -280,10 +285,10 @@ xlabel('Time'), ylabel('Accuracy')
 title('Classification across time')
 
 
-% For [samples x features x time] data, MVPA-Light has also a specialized
+% For [samples x features x time] data, MVPA-Light also has a specialized
 % function called mv_classify_across_time. It does the same thing as
 % mv_classify in this case, but it can be faster so you are recommended to
-% use it in these cases. The only obvious difference is that in the output
+% use it in these cases. The only visible difference is that in the output
 % the dimensions are now labeled as 'samples', 'features', and 'time
 % points'. Both mv_classify and mv_classify_across_time use the same type
 % of parameters for the cfg struct
@@ -300,10 +305,15 @@ perf = mv_classify_across_time(cfg, X, clabel);
 %% (4) Time generalization (time x time classification): 
 % Sometimes we want to train the classifier at a given time point t1 and 
 % test it at *all* time points t2 in the trial. If we repeat this for every
-% combination of training and test time points, we will obtain a [time x time] 
+% combination of training and test time points, we obtain a [time x time] 
 % matrix of results. This is also known as the temporal generalization
-% method (King and Dehaene, 2014;
+% method (see paper by King & Dehaene, 2014;
 % https://pubmed.ncbi.nlm.nih.gov/24593982/).
+% Generalization can be performed with mv_classify, but if the data
+% dimensions are [samples x features x time points] and you want to
+% calculate time generalization, you can use the more specialized function
+% mv_classify_timextime. Again, it acts exactly like mv_classify, it simply
+% has some useful presets.
 
 cfg = [];
 cfg.metric      = 'auc';
@@ -328,18 +338,19 @@ ylabel('Training time'), xlabel('Test time')
 % similar within this time period. 
 
 % Note that mv_classify_timextime is mostly a convenience function. Time
-% generalization can be performed using mv_classify, too. mv_classify can
+% generalization can be performed using mv_classify, too. To see this, let
+% us repeat this analysis using mv_classify. mv_classify can also 
 % generalize over any dimension. Since our data is [samples x features x
 % time] and we want to generalize over the 3rd dimension (time), we need to
 % set cfg.generalization_dimension = 3.
 cfg = [];
-cfg.metric      = 'auc';
-cfg.generalization_dimension      = 3;
+cfg.metric                      = 'auc';
+cfg.generalization_dimension    = 3;
 auc2 = mv_classify(cfg, dat.trial, clabel);
 
 %%%%%% EXERCISE 7 %%%%%%
-% Repeat the time x time classification without cross-validation. What 
-% do you notice?
+% Repeat the time x time classification without cross-validation
+% (cv='none'). What do you notice?
 %%%%%%%%%%%%%%%%%%%%%%%%
 
 % Generalization with two datasets: So far we trained and tested on the
@@ -374,7 +385,8 @@ grid on
 ylabel('Participant 1 time'), xlabel('Participant 2 time')
 % The result does not look very convincing. On the positive side, training
 % at about 0.4s and testing in the same range (0.3-0.5s) yields a
-% performance of close to 0.8 AUC which can be expected. 
+% performance of close to 0.8 AUC which suggests that what the classifier
+% learnt in participant 1 transfers to participant 2.
 % However, there is a strange result as well: training at
 % about -0.18s also allows successful decoding in the 0.3-0.5s range. It 
 % is likely that this effect is coincidental and that it disappears when
@@ -382,10 +394,10 @@ ylabel('Participant 1 time'), xlabel('Participant 2 time')
 % and the average across these analyses is plotted.
 
 %%%%%% EXERCISE 8 %%%%%%
-% Repeat the cross-classification but train on participant 1 and test on
-% participant 2. Do you expect the same result?
+% Repeat the cross-classification but reverse the order of the
+% participants: train on participant 2 and test on participant 1. Do you 
+% expect the same result?
 %%%%%%%%%%%%%%%%%%%%%%%%
-
 
 %% (5) Plotting results
 % So far, we have plotted the results by hand using Matlab's plot
@@ -393,14 +405,15 @@ ylabel('Participant 1 time'), xlabel('Participant 2 time')
 % called mv_plot_result. It plots the results and nicely lays out the axes
 % for us. To be able to use it, we need the result struct, which is simply
 % the second output argument of any classification function.
-% Let's test the visualization for 2D data first 
+% Let's test the visualization for 2D data first by selecting the 100-th
+% time point
 X = mean(dat.trial(:,:,100), 3);
 
 cfg = [];
 cfg.metric = 'auc';
 [~, result] = mv_classify(cfg, X, clabel);
 
-% now call it passing result as an input argument. We will obtain a barplot
+% Now call it passing result as an input argument. We will obtain a barplot
 % representing the AUC. The height of the bar is equal to the value of
 % perf. The errorbar is the standard deviation across folds and
 % repetitions, an heuristic marker of how variable the performance measure
@@ -418,15 +431,15 @@ cfg.metric = 'auc';
 
 mv_plot_result(result)
 
-% the x-axis depicts the sample number, not the actual time points. To get the
-% x-axis right, we can provide the time points as an extra argument to
-% the function call. The effect is that the x-axis is now in seconds relative
-% to trial onset.
+% The x-axis depicts the sample number, not the actual time points. To get the
+% x-axis in seconds, we can provide the time points as an extra argument to
+% the function call.
 mv_plot_result(result, dat.time)
 
 % Lastly, let us try time generalization (time x time classification). For
 % the resultant plot, both the x-axis and the y-axis need to be specified.
-% Therefore, we pass the parameter dat.time twice.
+% Therefore, we pass the parameter dat.time twice to get both axes in
+% seconds.
 cfg = [];
 cfg.metric = 'auc';
 [~, result] = mv_classify_timextime(cfg, dat.trial, clabel);
@@ -434,7 +447,9 @@ cfg.metric = 'auc';
 g = mv_plot_result(result, dat.time, dat.time);
 
 % the output argument g contains some handles to the graphical elements
-% which may be convenient when customizing the layout of the plots.
+% which may be convenient when customizing the layout of the plots. For
+% instance, let us change the font size of the title:
+set(g.ax.title, 'FontSize', 28)
 
 %%%%%% EXERCISE 9 %%%%%%
 % What happens when you call mv_plot_result and you calculated multiple
@@ -472,7 +487,7 @@ g = mv_plot_result(result, dat.time, dat.time);
 % we will set it to dimension 3 (time points).
 cfg = [];
 cfg.metric              = 'auc';
-cfg.feature_dimension   = 3;
+cfg.feature_dimension   = 3;        % now the time points act as features
 cfg.dimension_names     = {'samples' 'electrodes' 'time points'}; % name the dimensions for nicer output
 [perf, result] = mv_classify(cfg, dat.trial, clabel);
 
@@ -503,23 +518,29 @@ colormap jet
 % perform classification across time.
 %%%%%%%%%%%%%%%%%%%%%%%%
 
-% So far, we used classified electrode separately. We can increase the size
+% So far, we used classified electrodes separately. We can increase the size
 % of our searchlight by considering an electrode and its direct neighbours
-% for classification, and then contributing the classification result to
+% for classification, and then attributing the classification result to
 % this electrode. We first must find out which electrodes are neighbours of
-% each other. To this end, build a distance matrix giving the pair-wise 
-% distances between electrodes using the chans.pos field.
+% each other. To this end, build a distance matrix representing pair-wise 
+% distances between electrodes according to the chans.pos field.
 nb_mat = squareform(pdist(chans.pos));
 % Eg nb_mat(2,5) is the 2D distance between electrodes 2 and 5
 
-% From this matrix, we can define neighbours by setting a cutoff value. All
+% From this matrix, we can define neighbours by defining a cutoff value. All
 % electrodes closer to each other than the cutoff value are considered as
 % neighbours.
 cutoff = 0.2;
 electrode_neighbours =  (nb_mat < cutoff);
 
-% if we sum each column we get the number of neighbours each electrode has
-sum(electrode_neighbours)
+% Looking at the upper left corner of the matrix, we can eg see that electrode 1
+% (represented by row 1) is of course its own neighbour (column 1) but
+% electrode 3 (col 3) is also its neighbour. In fact, these are the only
+% two neighbours for this electrode.
+electrode_neighbours(1:5,1:10)
+
+% If we sum each row we get the number of neighbours each electrode has
+sum(electrode_neighbours,2)'
 % Eg the 1st electrode has 2 neighbours, and the 3rd electrode has 5
 % neighbours.
 
@@ -539,15 +560,19 @@ mv_plot_topography(cfg_plot, perf, chans.pos);
 colormap jet
 title('With neighbours')
 % We see that now the best classification performance is achieved for
-% left central electrodes.
+% left central electrodes. Also the result looks smoother than without
+% using neighbours. This makes sense because we are now using each
+% electrode and its surrounding electrodes for classification.
 
-% Now let us get back to classification across time and re-use the notion
-% of neighbours: The neighbour of a time point will be defined as the
-% immediately preceding and following time point. For instance, the
+% Now let us get back to classification across time and abstract the notion
+% of neighbours: what is the neighbour of a given time point?
+% The neighbour of a time point can be defined as the
+% immediately preceding and following time points. For instance, the
 % neighbours of the time point 100 are the time points 99 and 101. 
 % We can encode this is the neighbours matrix by specifying a diagonal
-% matrix that contains the main diagonal and the two neighbouring
-% off-diagonals
+% matrix that contains the main diagonal (each time point is its own
+% neighbour) and the two neighbouring off-diagonals (each time point
+% neighbours the immediately preceding and following time points).
 n_time = numel(dat.time);
 I = eye(n_time); % diagonal: it specifies that each time point is a neighbour of itself
 offdiag = diag(ones(n_time-1, 1),1) + diag(ones(n_time-1, 1),-1); % preceding and following time points
@@ -557,7 +582,7 @@ time_neighbours      = I + offdiag;
 % corner
 time_neighbours(1:5,1:5)
 % Time point 1 (row 1) has two neighbours: itself (col 1) and the following
-% time point (col 2). There is not preceding time point.
+% time point (col 2). There is no preceding time point.
 % Time point 2 (row 2) has three neighbours: the preceding time point (col
 % 1), itself (col 2), and the following time point (col 3). 
 
@@ -565,16 +590,18 @@ time_neighbours(end-5:end, end-5:end)
 % Looking at the bottom right corner of the matrix, we see that the same
 % pattern continues for all other time points except for the last time
 % point, which has no following time point (only a preceding time point).
+% Let's now pass this matrix to mv_classify and repeat the classification:
 
 cfg.feature_dimension   = 2;
 cfg.neighbours          = time_neighbours;
 [perf, result] = mv_classify(cfg, dat.trial, clabel);
 
+% The result looks slightly smoother (less wiggly line)
 mv_plot_result(result, dat.time)
 
 %%%%%% EXERCISE 11 %%%%%%
 % We performed searchlight analyses across both electrodes and time points.
-% Now it's time to put evrything together: Can you use my_classify to define a
+% Now it's time to put everything together: Can you use my_classify to define a
 % searchlight analysis across both electrodes and time points? 
 % What are the dimensions of the result?
 % Hint: you have to leave the feature dimension empty, and you need to
@@ -587,7 +614,7 @@ mv_plot_result(result, dat.time)
 % used to e.g. select the kernel for SVM and set the regularization
 % strength in LDA. MVPA Light is designed such that the standard settings
 % work for many classification problems, but for more fine grained control
-% of the classifier you may want ot manipulate them yourself. 
+% of the classifier you may want ot control them yourself. 
 % Hyperparameters are classifier specific, so you may want to inspect a
 % classifier's train function for a description of the hyperparameters.
 % Let's start with SVM.
@@ -614,11 +641,16 @@ perf_rbf = mv_classify(cfg, X, clabel);
 % the regularization strength and set it to 0.1?
 %%%%%%%%%%%%%%%%%%%%%%%%
 
+% Congrats, you made it to the end! You can embark on your own MVPA 
+% adventures now or check out one of the other tutorials.
 
 %% SOLUTIONS TO THE EXERCISES
 %% SOLUTION TO EXERCISE 1
-% We only need to find the index of channel Fz, the rest is the same
+% We only need to find the index of channel Fz, the rest of the code is 
+% the same as before. The result looks slightly different but we can still
+% see a difference between the two classes.
 ix = find(ismember(dat.label, 'Fz'));
+
 figure
 plot(dat.time, ERP_attended(ix, :))
 hold all, grid on
@@ -636,12 +668,17 @@ cfg.classifier  = 'naive_bayes';
 
 perf = mv_classify(cfg, X, clabel);
 
+% We can see that in this case the accuracy is lower for Naive Bayes than 
+% for LDA or Logistic Regression
+perf
+
 %% SOLUTION TO EXERCISE 3
 % Looking at the Readme file, we can see the precision and recall are
 % simply denoted as 'precision' and 'recall'
 cfg = [];
-cfg.metric      = {'precision', 'recall'};
+cfg.metric = {'precision', 'recall'};
 perf = mv_classify(cfg, X, clabel);
+
 fprintf('Precision = %0.2f, Recall = %0.2f\n', perf{:})
 
 %% SOLUTION TO EXERCISE 4
@@ -661,7 +698,8 @@ perf = mv_classify(cfg, X, clabel);
 % randomness leads to some variability in the outcome. For instance, let's
 % assume you find a AUC of 0.78. When you rerun the analysis it changes to
 % 0.75 or 0.82. Having multiple repetitions and averaging across them
-% stabilizes the estimate.
+% reduces the variability of your metric, but it comes at higher
+% computational costs.
 %
 % We can check this empirically by first running a classification analysis
 % several times with 1 repeat and then comparing it to 5 repeats. For the 5
@@ -672,10 +710,11 @@ perf = mv_classify(cfg, X, clabel);
 one_repeat = zeros(10,1);
 five_repeats = zeros(10,1);
 
-% for simplicity and speed, we reduce the data to 2D 
+% for simplicity and speed, we reduce the data to 2D by selecting the
+% sample at the middle time point
 X = dat.trial(:,:,floor(end/2));
 
-% one repeat
+% one repeat, run the analysis 10 times
 cfg = [];
 cfg.repeat      = 1;
 cfg.feedback    = 0;  % suppress output
@@ -683,7 +722,7 @@ for ii=1:10
     one_repeat(ii) = mv_classify(cfg, X, clabel);
 end
 
-% five repeats
+% five repeats, run the analysis 10 times
 cfg = [];
 cfg.repeat      = 5;
 cfg.feedback    = 0;  % suppress output
@@ -694,8 +733,11 @@ end
 one_repeat'
 five_repeats'
 
-fprintf('Std for one repeat: %0.5f\n', std(one_repeat))
-fprintf('Std for five repeats: %0.5f\n', std(five_repeats))
+fprintf('Standard deviation of metric for one repeat: %0.5f\n', std(one_repeat))
+fprintf('Standard deviation of metric for five repeats: %0.5f\n', std(five_repeats))
+% We can see that the standard deviation of the metric becomes much smaller
+% if we have more repeats. This suggests that our metric is more stable
+% now.
 
 %% SOLUTION TO EXERCISE 6
 % We simply set cfg.classifier, cfg.metric, cfg.k and cfg.repeat to the
@@ -721,7 +763,7 @@ cfg.cv          = 'none';
 cfg.metric      = 'auc';
 auc = mv_classify_timextime(cfg, dat.trial, clabel);
 
-% when cross-validation is turned off, most of the pattern is very
+% When cross-validation is turned off, most of the result looks very
 % similar. However, a diagonal appears running from the bottomn left to the 
 % top right. This is because, without cross-validation, we get some
 % overfitting (this is why we have good classification performance even in 
@@ -742,15 +784,18 @@ title('No cross-validation')
 % this is not to be expected: in cross-decoding we identify discriminative
 % patterns in the first dataset and then look for them in the second
 % dataset. The discriminative patterns for two subjects are likely
-% different.
+% not identical.
 cfg = [];
 cfg.classifier = 'lda';
 cfg.metric     = 'auc';
 
 cross_auc2 = mv_classify_timextime(cfg, dat2.trial, clabel2, dat1.trial, clabel1);
 
+% We find a different pattern. Most obviously training at around 0.7 s in
+% participant 2 seems to yield above chance performance in participant 1 
+% in the 0.5 - 1 s window.
 figure
-imagesc(dat2.time, dat1.time, cross_auc2+cross_auc)
+imagesc(dat2.time, dat1.time, cross_auc2)
 set(gca, 'YDir', 'normal')
 colorbar
 grid on
@@ -784,29 +829,35 @@ mv_plot_result(result, dat.time, dat.time);
 %% SOLUTION TO EXERCISE 10
 % It is very simple, we just have to set cfg.feature_dimension = 2 instead
 % of 3. This will tell mv_classify that we use electrodes as features, and
-% it will automatically loop over the 3rd dimension (time points). 
+% it will automatically loop over the 3rd dimension (time points). This is
+% actually the default but we will set it here manually, just to be extra
+% clear.
 cfg = [];
 cfg.metric = 'auc';
 cfg.feature_dimension = 2;
 cfg.dimension_names = {'samples' 'electrodes' 'time points'}; % name the dimensions for nicer output
-perf = mv_classify(cfg, dat.trial, clabel);
+[~, result] = mv_classify(cfg, dat.trial, clabel);
 
 % now the result is for each of the 131 time points
-size(perf)
+mv_plot_result(result, dat.time)
 
 %% SOLUTION TO EXERCISE 11
 % We have to leave the feature dimension empty since the searchlight is to
 % be performed across both electrodes and time points. We furthermore need
 % to pass the electrode_neighbours and time_neighbours matrices as a cell
-% array.
+% array. The order they are passed in must be equal to the order the
+% dimensions appear in the data.
 cfg = [];
 cfg.feature_dimension   = [];
 cfg.neighbours          = {electrode_neighbours, time_neighbours};  % pass both neighbours matrices
 cfg.dimension_names     = {'samples' 'electrodes' 'time points'};
 [perf, result] = mv_classify(cfg, dat.trial, clabel);
 
-% The result is of size 30 x 131, 30 electrodes and 131 time points.
-h = mv_plot_result(result);
+% The result is of size 30 x 131, 30 electrodes and 131 time points
+size(perf)
+
+% Since the result is 2D, it will be displayed as an image
+h = mv_plot_result(result, dat.time);
 
 % We now have an image of electrodes x time: this shows us both which
 % electrodes contribute to classification and when they do. Let us add the
@@ -825,8 +876,7 @@ perf_poly = mv_classify(cfg, X, clabel);
 % Let's look at the help first to see a list of hyperparameters
 help train_lda
 
-% We see that the parameter lambda controls the regularization strength. We
-% set it to 0.1
+% We see that the parameter lambda controls the regularization strength
 cfg = [];
 cfg.classifier              = 'lda';
 cfg.hyperparameter          = [];

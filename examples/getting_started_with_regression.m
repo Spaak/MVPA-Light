@@ -9,8 +9,8 @@
 % (4) Compare Ridge, Kernel Ridge, and Support Vector Regression
 %
 % It is recommended that you work through this tutorial step by step. To
-% this end, copy the line of code that you are currently reading and paste
-% it into the Matlab console. 
+% this end, copy the lines of code that you are currently reading and paste
+% them into the Matlab console. 
 %
 % There will be exercises throughout the tutorial. Try to do the exercise,
 % you can then check your code against the solution at the end of this
@@ -32,11 +32,15 @@
 % metrics and parameters there: github.com/treder/MVPA-Light/blob/master/README.md
 %
 % Next steps: Once you finished this tutorial, you can continue with one
-% of the other example scripts:
-% - understanding_preprocessing: how to use the cfg.preprocess field for
-%   nested preprocessing
-% - understanding_train_and_test_functions: how to train and test models
-%   directly, without using the high-level interface
+% of the other tutorials:
+% - advanced_classification
+% - understanding_metrics
+% - understanding_preprocessing
+% - understanding_statistics
+% - understanding_train_and_test_functions
+%
+% You can also check out the Github repo https://github.com/treder/MVPA-Light-Paper
+% It contains all the analysis scripts used in the MVPA-Light paper.
 
 close all
 clear
@@ -50,6 +54,8 @@ clear
 % create a target variable y which is serves as a proxy to this amplitude
 % and will be used as a target in our regression problem.
 
+% Copy-paste the following code into the console. Then copy-paste the
+% code below that produces the visualization.
 n_trials = 300;
 time = linspace(-0.2, 1, 201);
 n_time_points = numel(time);
@@ -70,18 +76,19 @@ subplot(1,3,3), plot(time, squeeze(X(200,:,:))'), title('Trial 200 (all channels
 % Calculate the average ERP (different lines represent different electrodes)
 figure
 plot(time, squeeze(mean(X,1))')
-title('Average')
+title('Average (all channels)')
 xlabel('Time'), ylabel('Amplitude')
 
 % Now it's time to create the target variable y. In a real experiment, y 
 % could be reaction time or trial number. Since our data is artificial, we 
 % create y from the amplitude. In particular, we create y as a noisy
-% version of the ERP amplitude:
+% version of the ERP amplitude by adding some Gaussian noise:
 y = amplitude + 0.5 * randn(n_trials, 1);
 
 %% (2) Regression with cross-validation and explanation of the cfg struct
 
-% The main function for performing regression is mv_regress. Let's jump straight into it:
+% The main function for performing regression is mv_regress. 
+% Let's jump straight into it:
 cfg = [];
 perf = mv_regress(cfg, X, y);
 
@@ -121,15 +128,16 @@ xlabel('Time'), ylabel('MAE')
 % Now we know how to set a model, let's see how we can change the
 % metric that we want to be calculated.  Let's go for R-squared 
 % metric instead of MAE. R-squared represents the proportional variance
-% explained by the model.
+% explained by the model. Note that in cross-validated data R-squared can
+% be negative.
 % A list of metrics is available at https://github.com/treder/MVPA-Light#regression-performance-metrics
 cfg             = [];
 cfg.metric      = 'r_squared';
 perf = mv_regress(cfg, X, y);
 
 % We can also calculate both R-squared and MAE at the same time using a cell
-% array. Now perf will be a cell array, the first cell is the R-squared values,
-% the second value is MAEs. 
+% array. Now perf will be a cell array. The first cell is the R-squared values,
+% the second cell is MAEs. 
 cfg = [];
 cfg.metric      = {'r_squared', 'mae'};
 perf = mv_regress(cfg, X, y);
@@ -156,7 +164,7 @@ perf = mv_regress(cfg, X, y);
 % Look at the description of cross-validation at 
 % https://github.com/treder/MVPA-Light/blob/master/README.md#cv
 % Do the classification again, but instead of k-fold cross-validation use
-% a holdout set and hold out 20% of the data for testing.
+% a holdout set and designate 20% of the data for testing.
 %%%%%%%%%%%%%%%%%%%%%%%%
 
 
@@ -187,14 +195,13 @@ cfg.dimension_names = {'samples' 'channels', 'time points'};
 mv_plot_result(result)
 
 % The x-axis depicts the sample number, not the actual time points. To get the
-% x-axis right, we can provide the time points as an extra argument to
-% the function call. The effect is that the x-axis is now in seconds relative
-% to trial onset.
+% x-axis in seconds, we can provide the time points as an extra argument to
+% the function call. 
 mv_plot_result(result, time)
 
 %%%%%% EXERCISE 4 %%%%%%
-% Calculate MSE, MAE, and R-squared at once and plot them using
-% mv_plot_result
+% Calculate MSE, MAE, and R-squared at once and plot the result using
+% mv_plot_result.
 %%%%%%%%%%%%%%%%%%%%%%%%
 
 %% (4) Compare Ridge, Kernel Ridge, and Support Vector Regression
@@ -207,7 +214,7 @@ mv_plot_result(result, time)
 
 % We simulate sinusoidal data with a quadratic trend
 x = linspace(0, 12, 100)';
-y = -.1*x.^2 + 3*sin(x);     % SINUSOID WITH QUADRATIC TREND
+y = -.1 * x.^2 + 3 * sin(x);     % SINUSOID WITH QUADRATIC TREND
 y_plus_noise  = y + randn(length(y), 1);
 
 % plot simulated data
@@ -218,14 +225,13 @@ plot(x,y_plus_noise, 'ko')
 legend({'True signal' 'Data (signal plus noise)'})
 title('True signal and data')
 
-
 % We want to plot the predictions of the models, not some summary
 % statistic such as MAE. To this end, we perform training and testing by
 % hand:
 % Ridge Regression: Train model and get predicted values
-param_ridge = mv_get_hyperparameter('ridge');
-model = train_ridge(param_ridge, x, y_plus_noise);
-y_ridge = test_ridge(model, x);
+param_ridge = mv_get_hyperparameter('ridge');       % get default hyperparameters
+model = train_ridge(param_ridge, x, y_plus_noise);  % train the model
+y_ridge = test_ridge(model, x);                     % obtain the predictions
 
 % Kernel Ridge: Train model and get predicted values
 param_krr = mv_get_hyperparameter('kernel_ridge');
@@ -261,9 +267,13 @@ title('Predictions')
 % y = 2*mod(x, 3) + 0.4 * x; % SAWTOOTH FUNCTION
 %%%%%%%%%%%%%%%%%%%%%%%%
 
+% Congrats, you made it to the end! You can embark on your own MVPA 
+% adventures now or check out one of the other tutorials.
+
 %% SOLUTIONS TO THE EXERCISES
 %% SOLUTION TO EXERCISE 1
-% The Kernel Ridge model is denoted as kernel_ridge.
+% The Kernel Ridge model is denoted as kernel_ridge. The kernel is one of
+% the model's hyperparameters. 
 cfg = [];
 cfg.model   = 'kernel_ridge';
 cfg.hyperparameter = [];

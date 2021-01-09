@@ -3,8 +3,8 @@
 % The purpose of this tutorial is to gain a better understanding of
 % the different classification and regression metrics in MVPA-Light as well
 % as the different types of outputs that classifiers produce.
-% It covers the following topics:
 %
+% Contents:
 % (1) Classification: Relationship between dvals (decision values), accuracy, and raw
 %     classifier output
 % (2) Classification: Looking at three types of raw classifier output: 
@@ -34,13 +34,14 @@ X = dat.trial;
 % cross-validation approach. We will then extract classification accuracy
 % ('accuracy'), decision values ('dval'), and raw classifier output ('none').
 % Note that the raw classifier output can be single-trial predicted class
-% labels, or decision values, or probabilities. 
-% We will use a LDA classifier which, by default, produces decision values.
+% labels, or decision values, or probabilities. We will use a LDA classifier 
+% which, by default, produces decision values. To explicitly control the
+% raw classifier output, cfg.output_type can be set.
 cfg = [];
 cfg.metric      = {'accuracy' 'dval' 'none'};
 cfg.cv          = 'holdout';
 cfg.p           = 0.5;
-cfg.repeat      = 1;
+cfg.repeat      = 2;
 cfg.output_type = 'dval';  % make sure that the raw classifier output is dvals not class labels
 cfg.classifier  = 'lda';
 
@@ -51,8 +52,8 @@ cfg.classifier  = 'lda';
 size(X)
 
 % Let's look at perf now:
-% Recall perf is a cell array with three elements (ie length(perf)=3)
-% because we requested 3 metrics. So perf{1} corresponds to 'accuracy',
+% Recall perf is a cell array with three elements because we requested 3
+% metrics. So perf{1} corresponds to 'accuracy',
 % perf{2} corrresponds to 'dval', and perf{3} to 'none' (raw classifier outputs). 
 % If we print the cell array we can have a closer look at the dimensions
 perf
@@ -71,9 +72,9 @@ close all
 mv_plot_result(result)
 
 % Figure 1 shows accuracy: a single line, since it takes both classes into
-% account simultanesouly
+% account simultaneously.
 % Figure 2 shows dval: we get two lines since the average dval is
-% calculated for each class separately
+% calculated for each class separately.
 % Figure 3 shows the raw classifier output: Each dot represents a single
 % sample, and the dots are colored according to which class the sample
 % belongs to. If you average the dvals in each class at each x-value, you
@@ -106,20 +107,20 @@ cfg.classifier  = 'lda';
     
 [perf_clabel, result_clabel] = mv_classify_across_time(cfg, X, clabel);
 
-% now let's set the output type to dval and calculate the result
+% Now let's set the output type to dval and compute the output
 cfg.output_type = 'dval';
 [perf_dval, result_dval] = mv_classify_across_time(cfg, X, clabel);
 
-% now let's set the output type to prob
+% Now let's set the output type to prob
 cfg.output_type = 'prob';
-% to get probabilities, we must also set LDA's .prob hyperparameter to one,
+% To get probabilities, we must also set LDA's .prob hyperparameter to one,
 % because in order to calculate probabilities a multivariate Gaussian
 % distribution needs to be estimated in the training phase
 cfg.hyperparameter = [];
 cfg.hyperparameter.prob = 1;
 [perf_prob, result_prob] = mv_classify_across_time(cfg, X, clabel);
 
-% let's print the first 5 elements from each of the results using the
+% Let's print the first 5 elements from each of the results using the
 % 101-st time point (corresponding to  dat.time(101) = 0.7s post-stimulus))
 % Since we set cv = 'none' there is no random folds, hence the first 5 elements 
 % in each result correspond to the first 5 samples in the data.
@@ -144,7 +145,7 @@ clabel(1:5)
 % either dvals or probabilities.
 
 %%%%%% EXERCISE 2 %%%%%%
-% Use the mv_plot_result(...) function to plot the three result structs. Can you
+% Use the mv_plot_result function to plot the three result structs. Can you
 % interpret the plots? One of the three plots is not very useful, which
 % one?
 %%%%%%%%%%%%%%%%%%%%%%%%
@@ -156,25 +157,30 @@ clabel(1:5)
 % for classification, but to simplify the analysis we will focus on a
 % single time point. Let us perform regression on all time points first and
 % then select the time point that gives us the best result. 
-% To this end, train a Kernel Ridge regression model and calculate MAE
+% As target values, we will use the trial number:
+y = (1:size(dat.trial,1))';
 
-cfg                 = [];
-cfg.model           = 'ridge';
-cfg.hyperparameter  = [];
-cfg.hyperparameter.lambda = 0.1;
-cfg.metric          = 'mae';
+% Train a Kernel Ridge regression model and calculate MAE
+cfg = [];
+cfg.model                   = 'ridge';
+cfg.hyperparameter          = [];
+cfg.hyperparameter.lambda   = 0.1;
+cfg.metric                  = 'mae';
 
 % Since we want to predict the trial number both train and test sets should
 % ideally contain early, middle, and late trials. An easy way to achieve
 % this is to predefine two folds: the first fold contains trials with
 % uneven trials numbers (1, 3, 5, ...) and the second folds contains the
 % even trials.
-cfg.cv              = 'predefined';    
+cfg.cv                      = 'predefined';    
 fold = ones(numel(y), 1); 
 fold(2:2:end) = 2; % even trials are designated as fold 2
-cfg.fold            = fold;
+cfg.fold                    = fold;
+
 
 [perf, result] = mv_regress(cfg, dat.trial, y);
+
+% plot result and mark point with lowest MAE
 mv_plot_result(result, dat.time)
 hold on
 [~, min_ix] = min(perf);  % index of time point with lowest MAE
@@ -198,8 +204,7 @@ pred = zeros(numel(y), 1);
 pred(1:2:end) = perf{3}{1};
 pred(2:2:end) = perf{3}{2};
 % Now pred contains the predictions in order, i.e. pred(i) is the
-% prediction for the i-th trials
-
+% prediction for the i-th trial
 
 close all
 plot(1:numel(y), pred)
@@ -249,6 +254,8 @@ disp(corr(perf))
 % unbalanced or the classifier is clearly biased towards one of the
 % classes.
 
+% Congrats, you finished the tutorial!
+
 %% SOLUTIONS TO THE EXERCISES
 %% SOLUTION TO EXERCISE 1
 cfg = [];
@@ -269,7 +276,7 @@ perf
 %% SOLUTION TO EXERCISE 2
 % Let's start with plotting the result based on the clabel outputs.
 mv_plot_result(result_clabel)
-% We see only tow horizontal lines of dots at y=1 and y=2: this is 
+% We see only two horizontal lines of dots at y=1 and y=2: this is 
 % because we are plotting the class labels which have the values 1 and 2.
 % Furthermore, class 1 dots are plotted first, followed by class 2 dots.
 % Class 2 dots are superimposed on class 1 which is why we can only see one
