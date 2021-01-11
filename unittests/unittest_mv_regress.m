@@ -152,6 +152,46 @@ szp = size(perf);
 
 print_unittest_result('[without crossval] is size(perf) correct for 4 input dimensions?', sz([2,4]), szp, tol);
 
+%% Check whether output dimensions are correct cfg.flatten_features = 1 for 4D data
+
+% 4 input dimensions with 2 search dims
+sz = [9, 12, 2, 13];
+X = randn(sz);
+Y = randn(sz(1),1);
+
+cfg = [];
+cfg.sample_dimension    = 1;
+cfg.feature_dimension   = [2 3];
+cfg.cv                  = 'kfold';
+cfg.k                   = 2;
+cfg.feedback            = 0;
+cfg.flatten_features    = 1;
+
+perf = mv_regress(cfg, X, Y);
+szp = size(perf);
+
+print_unittest_result('size(perf) 4D data, 2 feature dim and cfg.flatten_features=1', [sz(4) 1], szp, tol);
+
+%% Check whether output dimensions are correct cfg.flatten_features = 1 for 5D data
+
+% 4 input dimensions with 2 search dims
+sz = [9, 12, 2, 3, 4];
+X = randn(sz);
+Y = randn(sz(2),1);
+
+cfg = [];
+cfg.sample_dimension    = 2;
+cfg.feature_dimension   = [1 5];
+cfg.cv                  = 'kfold';
+cfg.k                   = 2;
+cfg.feedback            = 0;
+cfg.flatten_features    = 1;
+
+perf = mv_regress(cfg, X, Y);
+szp = size(perf);
+
+print_unittest_result('size(perf) 5D data, 2 feature dim and cfg.flatten_features=1', sz(3:4), szp, tol);
+
 %% 5 input dimensions with 2 search dims + 1 generalization dim - are output dimensions as expected?
 sz = [11, 8, 9, 7, 6];
 X = randn(sz);
@@ -170,8 +210,7 @@ cfg.repeat                  = 1;
 nd = ndims(X);
 for sd=1:nd   % sample dimension
     cfg.sample_dimension     = sd;
-    clabel = ones(sz(sd), 1); 
-    clabel(ceil(end/2):end) = 2;
+    Y = randn(size(X, sd), 1);
 
     for ff=1:nd-1  % feature dimension
         fd = mod(sd+ff-1,nd)+1;
@@ -182,11 +221,51 @@ for sd=1:nd   % sample dimension
             gd = search_dim(gg);
             cfg.generalization_dimension = gd;
             search_dim_without_gen = setdiff(search_dim, gd);
-            perf = mv_classify(cfg, X, clabel);
+            perf = mv_regress(cfg, X, Y);
             szp = size(perf);
             print_unittest_result(sprintf('[5 dimensions] sample dim %d, feature dim %d, gen dim %d', sd, fd, gd), sz([search_dim_without_gen, gd ,gd]), szp, tol);
         end
     end
 end
 
+
+%% Check output size for searchlight with neighbour matrix that is non-square [1 search dim]
+X = randn(15, 10, 19);
+Y = randn(size(X,1),1);
+
+% create random matrix with neighbours
+nb1 = eye(size(X,2));
+nb1 = nb1(1:end-4, :); % remove a few rows to make it non-square
+
+cfg = [];
+cfg.sample_dimension    = 1;
+cfg.feature_dimension   = 3;
+cfg.repeat              = 1;
+cfg.feedback            = 0;
+cfg.neighbours          = nb1;
+perf = mv_regress(cfg, X, Y);
+
+print_unittest_result('[1 search dim] size(perf) for non-square neighbours', size(nb1,1), size(perf,1), tol);
+
+%% Check output size for searchlight with neighbour matrix that is non-square [2 search dim]
+X = randn(19, 22, 19, 21);
+Y = randn(size(X,1),1);
+
+% create random matrix with neighbours
+nb1 = eye(size(X,2));
+nb2 = eye(size(X,4));
+
+% remove a few rows
+nb1 = nb1(1:end-8, :);
+nb2 = nb2(1:end-1, :);
+
+cfg = [];
+cfg.sample_dimension    = 1;
+cfg.feature_dimension   = 3;
+cfg.repeat              = 1;
+cfg.feedback            = 0;
+cfg.neighbours          = {nb1 nb2};
+perf = mv_regress(cfg, X, Y);
+
+print_unittest_result('[2 search dim] size(perf) for non-square neighbours', [size(nb1,1) size(nb2,1)], size(perf), tol);
 
